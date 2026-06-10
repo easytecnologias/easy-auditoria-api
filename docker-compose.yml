@@ -1,0 +1,19 @@
+services:
+  easy-auditoria-api:
+    build: .
+    container_name: easy-auditoria-api
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/data/easy-auditoria.db
+      - LOJA_106_TOKEN=${LOJA_106_TOKEN:-}
+    volumes:
+      - easy-auditoria-api-data:/data
+    networks:
+      - sightops-platform
+
+volumes:
+  easy-auditoria-api-data:
+
+networks:
+  sightops-platform:
+    external: true
