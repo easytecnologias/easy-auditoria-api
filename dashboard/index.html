@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Easy Auditoria PDV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">E</div>
+        <div>
+          <strong>Easy Auditoria</strong>
+          <span>Central de PDVs</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="Navegação principal">
+        <button class="nav-item active" data-view="overview"><i data-lucide="layout-dashboard"></i><span>Visão geral</span></button>
+        <button class="nav-item" data-view="alerts"><i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b></button>
+        <button class="nav-item" data-view="occurrences"><i data-lucide="bookmark-check"></i><span>Ocorrências</span></button>
+        <button class="nav-item" data-view="receipts"><i data-lucide="receipt-text"></i><span>Cupons</span></button>
+        <button class="nav-item" data-view="terminals"><i data-lucide="monitor-dot"></i><span>PDVs</span></button>
+        <button class="nav-item" data-view="reports"><i data-lucide="chart-no-axes-combined"></i><span>Relatórios</span></button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="nav-item"><i data-lucide="settings"></i><span>Configurações</span></button>
+        <div class="environment">
+          <span class="status-dot online"></span>
+          Ambiente de demonstração
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" aria-label="Abrir menu"><i data-lucide="menu"></i></button>
+        <div class="store-selector">
+          <span>Operação</span>
+          <button>Loja 106 <i data-lucide="chevron-down"></i></button>
+        </div>
+        <div class="topbar-actions">
+          <button class="period-button"><i data-lucide="calendar-days"></i><span>Hoje, 10 jun 2026</span></button>
+          <button class="icon-button notification-button" aria-label="Notificações"><i data-lucide="bell"></i><span id="notifBadge">0</span></button>
+          <div class="profile">
+            <div class="avatar">EM</div>
+            <div><strong>Elishafan</strong><span>Administrador</span></div>
+            <i data-lucide="chevron-down"></i>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Monitoramento em tempo real</p>
+            <h1>Visão geral operacional</h1>
+            <p>Acompanhe os caixas e revise somente eventos que exigem decisão humana.</p>
+          </div>
+          <div class="live-indicator"><span></span>Atualização ao vivo</div>
+        </div>
+
+        <section class="metrics" aria-label="Indicadores operacionais">
+          <article>
+            <div class="metric-icon green"><i data-lucide="monitor-check"></i></div>
+            <div><span>PDVs monitorados</span><strong id="metricPdvsTotal">0 <small id="metricPdvsOnline">/ 0 online</small></strong></div>
+          </article>
+          <article>
+            <div class="metric-icon blue"><i data-lucide="banknote"></i></div>
+            <div><span>Vendido hoje</span><strong>R$ 48.392,70</strong></div>
+          </article>
+          <article>
+            <div class="metric-icon cyan"><i data-lucide="receipt"></i></div>
+            <div><span>Cupons fechados</span><strong>846</strong></div>
+          </article>
+          <article>
+            <div class="metric-icon red"><i data-lucide="triangle-alert"></i></div>
+            <div><span>Alertas pendentes</span><strong id="metricAlertasPendentes">0 <small id="metricAlertasCriticos">0 críticos</small></strong></div>
+          </article>
+          <article>
+            <div class="metric-icon amber"><i data-lucide="timer"></i></div>
+            <div><span>Análise média</span><strong>8,4s</strong></div>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <div class="alerts-panel">
+            <div class="section-toolbar">
+              <div>
+                <h2>Alertas recentes</h2>
+                <p>Eventos priorizados para revisão do supervisor</p>
+              </div>
+              <div class="toolbar-actions">
+                <label class="search-box"><i data-lucide="search"></i><input id="searchInput" placeholder="Cupom, produto ou PDV"></label>
+                <button class="filter-button"><i data-lucide="sliders-horizontal"></i><span>Filtros</span></button>
+              </div>
+            </div>
+
+            <div class="alert-tabs">
+              <button class="active" data-filter="all">Todos <span id="countAll">0</span></button>
+              <button data-filter="critical">Críticos <span id="countCritical">0</span></button>
+              <button data-filter="review">Em revisão <span id="countReview">0</span></button>
+              <button data-filter="resolved">Resolvidos <span id="countResolved">0</span></button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Severidade</th>
+                    <th>Horário</th>
+                    <th>PDV / Cupom</th>
+                    <th>Evento</th>
+                    <th>Produto registrado</th>
+                    <th>Confiança</th>
+                    <th>Estado</th>
+                    <th aria-label="Ações"></th>
+                  </tr>
+                </thead>
+                <tbody id="alertsTable"></tbody>
+              </table>
+            </div>
+            <div class="table-footer"><span id="alertsFooterText">Mostrando 0 alertas de hoje</span><button>Ver todas as ocorrências <i data-lucide="arrow-right"></i></button></div>
+          </div>
+
+          <aside class="activity-panel">
+            <div class="section-title">
+              <div><h2>Saúde dos PDVs</h2><p>Serviços essenciais</p></div>
+              <button class="icon-button" aria-label="Atualizar"><i data-lucide="refresh-cw"></i></button>
+            </div>
+            <div class="health-header"><span>PDV</span><span>Ponte</span><span>iMHDX</span><span>Auditoria</span></div>
+            <div id="healthGrid" class="health-grid"></div>
+            <button class="health-link">Abrir monitor técnico <i data-lucide="arrow-up-right"></i></button>
+          </aside>
+        </section>
+
+        <section class="analytics-grid">
+          <article class="chart-panel">
+            <div class="section-title">
+              <div><h2>Alertas por hora</h2><p>Eventos gerados e confirmados hoje</p></div>
+              <div class="legend"><span><i class="legend-dot generated"></i>Gerados</span><span><i class="legend-dot confirmed"></i>Confirmados</span></div>
+            </div>
+            <svg class="line-chart" viewBox="0 0 700 190" role="img" aria-label="Gráfico de alertas por hora">
+              <g class="grid-lines">
+                <line x1="48" y1="22" x2="680" y2="22"/><line x1="48" y1="72" x2="680" y2="72"/>
+                <line x1="48" y1="122" x2="680" y2="122"/><line x1="48" y1="172" x2="680" y2="172"/>
+              </g>
+              <polyline class="line generated-line" points="48,145 120,132 192,151 264,108 336,118 408,63 480,91 552,42 624,70 680,51"/>
+              <polyline class="line confirmed-line" points="48,162 120,156 192,164 264,143 336,150 408,121 480,139 552,104 624,128 680,116"/>
+              <g class="axis-labels">
+                <text x="48" y="188">08h</text><text x="190" y="188">10h</text><text x="332" y="188">12h</text>
+                <text x="476" y="188">14h</text><text x="620" y="188">16h</text>
+              </g>
+            </svg>
+          </article>
+
+          <article class="chart-panel occurrence-types">
+            <div class="section-title"><div><h2>Tipos de ocorrência</h2><p>Distribuição dos alertas reais</p></div></div>
+            <div class="bar-list" id="occurrenceTypesList">
+              <div><span>Sem dados ainda</span><b>-</b><i><em style="width:0%"></em></i></div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="alertDrawer" class="alert-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div><p class="eyebrow">Ocorrência em revisão</p><h2 id="drawerTitle">Detalhe do alerta</h2></div>
+      <button id="closeDrawer" class="icon-button" aria-label="Fechar"><i data-lucide="x"></i></button>
+    </div>
+    <div class="drawer-body">
+      <div class="evidence-main">
+        <img id="mainEvidence" src="assets/frame-register.svg" alt="Simulação da câmera superior do caixa">
+        <span class="camera-label">01 · PDV 01</span>
+        <span class="camera-time" id="cameraTime">10/06/2026 14:32:08</span>
+      </div>
+      <div class="frame-strip">
+        <button data-frame="assets/frame-before.svg"><img src="assets/frame-before.svg" alt=""><span>Antes</span></button>
+        <button class="active" data-frame="assets/frame-register.svg"><img src="assets/frame-register.svg" alt=""><span>Registro</span></button>
+        <button data-frame="assets/frame-after.svg"><img src="assets/frame-after.svg" alt=""><span>Depois</span></button>
+      </div>
+
+      <div class="decision-block">
+        <div class="decision-row"><span id="resultBadge" class="result-badge danger">Não confere</span><strong id="confidenceValue">94% confiança</strong></div>
+        <p id="analysisText">O PDV registrou um produto, mas os três quadros não mostram passagem física compatível na área do scanner.</p>
+      </div>
+
+      <dl class="event-data">
+        <div><dt>PDV</dt><dd id="detailPdv">PDV 01</dd></div>
+        <div><dt>Cupom</dt><dd id="detailReceipt">221548</dd></div>
+        <div><dt>Horário</dt><dd id="detailTime">14:32:08</dd></div>
+        <div><dt>Produto</dt><dd id="detailProduct">Café Maratá 250g</dd></div>
+        <div><dt>Quantidade</dt><dd id="detailQuantity">1 unidade</dd></div>
+        <div><dt>Valor</dt><dd id="detailValue">R$ 14,99</dd></div>
+      </dl>
+
+      <div class="technical-note">
+        <i data-lucide="scan-search"></i>
+        <div><strong>Análise técnica</strong><p id="technicalNote">Movimento abaixo do limite local e ausência visual confirmada pela análise de imagem.</p></div>
+      </div>
+    </div>
+    <div class="drawer-actions">
+      <button id="videoButton" class="secondary-action"><i data-lucide="play"></i>Ver vídeo 20s</button>
+      <button id="saveButton" class="primary-action"><i data-lucide="bookmark-check"></i>Salvar ocorrência</button>
+      <button id="ignoreButton" class="ghost-action"><i data-lucide="circle-slash"></i>Ignorar</button>
+    </div>
+  </aside>
+
+  <div id="videoModal" class="modal-backdrop">
+    <div class="video-modal">
+      <div class="modal-header"><div><p class="eyebrow">Gravação POS · iMHDX</p><h2>Vídeo do evento</h2></div><button id="closeVideo" class="icon-button"><i data-lucide="x"></i></button></div>
+      <div class="video-simulation">
+        <img src="assets/frame-register.svg" alt="Simulação do vídeo do caixa">
+        <button id="playToggle" class="play-toggle"><i data-lucide="play"></i></button>
+        <div class="video-progress"><span id="videoProgress"></span></div>
+        <div class="video-meta"><span>PDV 01 · Cupom 221548</span><span id="videoClock">00:00 / 00:20</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><i data-lucide="circle-check"></i><span>Ocorrência salva.</span></div>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

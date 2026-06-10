@@ -15,7 +15,7 @@ const toast = document.getElementById("toast");
 
 async function carregarAlertas() {
   try {
-    const params = new URLSearchParams({ loja: LOJA, filter: activeFilter });
+    const params = new URLSearchParams({ loja: LOJA, filter: "all" });
     const resp = await fetch(`/api/v1/alerts?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     alerts = await resp.json();
@@ -23,6 +23,8 @@ async function carregarAlertas() {
     alerts = [];
   }
   renderAlerts();
+  renderAlertMetrics();
+  renderOccurrenceTypes();
 }
 
 async function carregarHealth() {
@@ -34,6 +36,7 @@ async function carregarHealth() {
     health = [];
   }
   renderHealth();
+  renderHealthMetric();
 }
 
 function renderAlerts() {
@@ -102,6 +105,55 @@ function renderHealth() {
 function serviceState(state) {
   const label = state === "online" ? "Online" : state === "warning" ? "Atenção" : "Parada";
   return `<span class="service-state ${state}"><i></i>${label}</span>`;
+}
+
+function renderHealthMetric() {
+  const total = health.length;
+  const online = health.filter(item => item.bridge === "online" && item.imhdx === "online" && item.audit === "online").length;
+  document.getElementById("metricPdvsTotal").firstChild.textContent = `${total} `;
+  document.getElementById("metricPdvsOnline").textContent = `/ ${online} online`;
+}
+
+function renderAlertMetrics() {
+  const total = alerts.length;
+  const pendentes = alerts.filter(alert => alert.state !== "resolved").length;
+  const criticos = alerts.filter(alert => alert.severity === "critical" && alert.state !== "resolved").length;
+  const emRevisao = alerts.filter(alert => alert.state !== "resolved" && alert.severity !== "critical").length;
+  const resolvidos = alerts.filter(alert => alert.state === "resolved").length;
+
+  document.getElementById("navAlertsBadge").textContent = pendentes;
+  document.getElementById("notifBadge").textContent = pendentes;
+
+  document.getElementById("metricAlertasPendentes").firstChild.textContent = `${pendentes} `;
+  document.getElementById("metricAlertasCriticos").textContent = `${criticos} críticos`;
+
+  document.getElementById("countAll").textContent = total;
+  document.getElementById("countCritical").textContent = criticos;
+  document.getElementById("countReview").textContent = emRevisao;
+  document.getElementById("countResolved").textContent = resolvidos;
+
+  document.getElementById("alertsFooterText").textContent = `Mostrando ${total} alertas de hoje`;
+}
+
+function renderOccurrenceTypes() {
+  const list = document.getElementById("occurrenceTypesList");
+  if (alerts.length === 0) {
+    list.innerHTML = `<div><span>Sem dados ainda</span><b>-</b><i><em style="width:0%"></em></i></div>`;
+    return;
+  }
+
+  const contagem = {};
+  alerts.forEach(alert => {
+    contagem[alert.event] = (contagem[alert.event] || 0) + 1;
+  });
+
+  const total = alerts.length;
+  const tipos = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
+
+  list.innerHTML = tipos.map(([nome, qtd]) => {
+    const pct = Math.round((qtd / total) * 100);
+    return `<div><span>${nome}</span><b>${pct}%</b><i><em style="width:${pct}%"></em></i></div>`;
+  }).join("");
 }
 
 function openDrawer(alert) {
@@ -188,7 +240,7 @@ document.querySelectorAll(".alert-tabs button").forEach(button => {
     document.querySelectorAll(".alert-tabs button").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     activeFilter = button.dataset.filter;
-    carregarAlertas();
+    renderAlerts();
   });
 });
 
