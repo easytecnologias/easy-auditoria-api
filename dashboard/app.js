@@ -162,21 +162,40 @@ const FRAME_FALLBACKS = {
   after: "assets/frame-after.svg",
 };
 
+const PANEL_WIDTH = 640;
+const PANEL_HEIGHT = 520;
+
 function aplicarEvidencia(imageUrl) {
   const frameButtons = document.querySelectorAll(".frame-strip button");
-  const probe = new Image();
-  probe.onload = () => {
-    document.getElementById("mainEvidence").src = imageUrl;
-    frameButtons.forEach(button => { button.dataset.frame = imageUrl; });
+  const img = new Image();
+  img.onload = () => {
+    const numPanels = Math.max(1, Math.round(img.naturalWidth / PANEL_WIDTH));
+    const panelUrls = [];
+    for (let i = 0; i < numPanels; i++) {
+      const canvas = document.createElement("canvas");
+      canvas.width = PANEL_WIDTH;
+      canvas.height = PANEL_HEIGHT;
+      canvas.getContext("2d").drawImage(
+        img, i * PANEL_WIDTH, 0, PANEL_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_WIDTH, PANEL_HEIGHT
+      );
+      panelUrls.push(canvas.toDataURL("image/jpeg"));
+    }
+    frameButtons.forEach((button, index) => {
+      button.dataset.frame = panelUrls[Math.min(index, numPanels - 1)];
+    });
+    document.querySelectorAll(".frame-strip button").forEach(item => item.classList.remove("active"));
+    const registerButton = frameButtons[1] || frameButtons[0];
+    registerButton.classList.add("active");
+    document.getElementById("mainEvidence").src = registerButton.dataset.frame;
   };
-  probe.onerror = () => {
+  img.onerror = () => {
     document.getElementById("mainEvidence").src = FRAME_FALLBACKS.register;
     frameButtons.forEach((button, index) => {
       const frame = index === 0 ? "before" : index === 2 ? "after" : "register";
       button.dataset.frame = FRAME_FALLBACKS[frame];
     });
   };
-  probe.src = imageUrl;
+  img.src = imageUrl;
 }
 
 function openDrawer(alert) {
