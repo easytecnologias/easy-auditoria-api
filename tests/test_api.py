@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 def client(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("IMAGES_DIR", str(tmp_path / "images"))
     monkeypatch.setenv("LOJA_106_TOKEN", "token-teste")
 
     import app as app_module
@@ -202,3 +203,73 @@ def test_decision_invalida(client):
 def test_decision_alerta_inexistente(client):
     resp = client.post("/api/v1/alerts/999/decision", json={"action": "save"})
     assert resp.status_code == 404
+
+
+def test_evento_tem_image_url(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]
+    assert alerta["imageUrl"] == f"/api/v1/events/{alerta['id']}/image"
+
+
+def test_imagem_inexistente_retorna_404(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    assert resp.status_code == 404
+
+
+def test_upload_e_obtencao_de_imagem(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    resp = client.post(
+        f"/api/v1/events/{alerta_id}/image",
+        files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
+        headers=auth_headers(),
+    )
+    assert resp.status_code == 200
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    assert resp.status_code == 200
+    assert resp.content == b"fake-jpg-bytes"
+
+
+def test_upload_imagem_sem_token_e_rejeitado(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    resp = client.post(
+        f"/api/v1/events/{alerta_id}/image",
+        files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 401
+
+
+def test_decision_ignore_apaga_imagem(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    client.post(
+        f"/api/v1/events/{alerta_id}/image",
+        files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
+        headers=auth_headers(),
+    )
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"})
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    assert resp.status_code == 404
+
+
+def test_decision_save_mantem_imagem(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    client.post(
+        f"/api/v1/events/{alerta_id}/image",
+        files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
+        headers=auth_headers(),
+    )
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    assert resp.status_code == 200

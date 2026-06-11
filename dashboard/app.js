@@ -20,7 +20,7 @@ async function carregarAlertas() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     alerts = await resp.json();
   } catch (err) {
-    alerts = [];
+    // mantem os dados anteriores em caso de falha temporaria de rede
   }
   renderAlerts();
   renderAlertMetrics();
@@ -33,7 +33,7 @@ async function carregarHealth() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     health = await resp.json();
   } catch (err) {
-    health = [];
+    // mantem os dados anteriores em caso de falha temporaria de rede
   }
   renderHealth();
   renderHealthMetric();
@@ -156,6 +156,29 @@ function renderOccurrenceTypes() {
   }).join("");
 }
 
+const FRAME_FALLBACKS = {
+  before: "assets/frame-before.svg",
+  register: "assets/frame-register.svg",
+  after: "assets/frame-after.svg",
+};
+
+function aplicarEvidencia(imageUrl) {
+  const frameButtons = document.querySelectorAll(".frame-strip button");
+  const probe = new Image();
+  probe.onload = () => {
+    document.getElementById("mainEvidence").src = imageUrl;
+    frameButtons.forEach(button => { button.dataset.frame = imageUrl; });
+  };
+  probe.onerror = () => {
+    document.getElementById("mainEvidence").src = FRAME_FALLBACKS.register;
+    frameButtons.forEach((button, index) => {
+      const frame = index === 0 ? "before" : index === 2 ? "after" : "register";
+      button.dataset.frame = FRAME_FALLBACKS[frame];
+    });
+  };
+  probe.src = imageUrl;
+}
+
 function openDrawer(alert) {
   selectedAlert = alert;
   document.getElementById("drawerTitle").textContent = alert.event;
@@ -172,6 +195,7 @@ function openDrawer(alert) {
   const badge = document.getElementById("resultBadge");
   badge.textContent = alert.result;
   badge.className = `result-badge ${alert.result === "Confere" ? "success" : alert.result === "Inconclusivo" || alert.result === "Revisar" ? "warning" : "danger"}`;
+  aplicarEvidencia(alert.imageUrl);
   drawer.classList.add("open");
   backdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");

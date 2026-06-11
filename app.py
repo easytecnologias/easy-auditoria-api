@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/data/easy-auditoria.db"))
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
 
 RESULTADO_LABELS = {
     "CONFERE": "Confere",
@@ -53,6 +55,7 @@ def status_de_resultado(resultado: Optional[str]) -> str:
 
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         row = conn.execute("SELECT id FROM lojas WHERE id = ?", ("loja-106",)).fetchone()
@@ -169,7 +172,11 @@ def criar_evento(
         ),
     )
     db.commit()
-    return {"ok": True}
+    row = db.execute(
+        "SELECT id FROM auditoria_eventos WHERE loja_id = ? AND timestamp = ? AND pdv = ? AND imagem IS ?",
+        (loja["id"], evento.timestamp, evento.pdv, evento.imagem),
+    ).fetchone()
+    return {"ok": True, "id": row["id"] if row else None}
 
 
 @app.post("/api/v1/health")
@@ -238,6 +245,7 @@ def _evento_para_alerta(row: sqlite3.Row) -> dict:
         "result": RESULTADO_LABELS.get(resultado, resultado),
         "analysis": row["comparacao_pdv"] or "",
         "note": row["possivel_divergencia"] or "",
+        "imageUrl": f"/api/v1/events/{row['id']}/image",
     }
 
 
@@ -278,6 +286,35 @@ def listar_health(loja: str, db: sqlite3.Connection = Depends(get_db)):
     return [dict(row) for row in rows]
 
 
+def _imagem_path(evento_id: int) -> Path:
+    return IMAGES_DIR / f"{evento_id}.jpg"
+
+
+@app.post("/api/v1/events/{evento_id}/image")
+def enviar_imagem_evento(
+    evento_id: int,
+    file: UploadFile,
+    loja: sqlite3.Row = Depends(autenticar_loja),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    row = db.execute(
+        "SELECT id FROM auditoria_eventos WHERE id = ? AND loja_id = ?",
+        (evento_id, loja["id"]),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Evento nao encontrado")
+    _imagem_path(evento_id).write_bytes(file.file.read())
+    return {"ok": True}
+
+
+@app.get("/api/v1/events/{evento_id}/image")
+def obter_imagem_evento(evento_id: int):
+    caminho = _imagem_path(evento_id)
+    if not caminho.is_file():
+        raise HTTPException(status_code=404, detail="Imagem nao encontrada")
+    return FileResponse(caminho, media_type="image/jpeg")
+
+
 class DecisionIn(BaseModel):
     action: str
 
@@ -294,4 +331,6 @@ def decidir_alerta(alerta_id: int, decisao: DecisionIn, db: sqlite3.Connection =
     db.commit()
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Alerta nao encontrado")
+    if decisao.action == "ignore":
+        _imagem_path(alerta_id).unlink(missing_ok=True)
     return {"ok": True, "status": novo_status}
