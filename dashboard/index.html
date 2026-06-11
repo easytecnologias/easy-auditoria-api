@@ -59,7 +59,20 @@
           <button>Loja 106 <i data-lucide="chevron-down"></i></button>
         </div>
         <div class="topbar-actions">
-          <button class="period-button"><i data-lucide="calendar-days"></i><span>Hoje, 10 jun 2026</span></button>
+          <div class="pdv-filter">
+            <button class="period-button" id="pdvFilterButton"><i data-lucide="monitor-dot"></i><span id="pdvFilterLabel">Todos os PDVs</span><i data-lucide="chevron-down"></i></button>
+            <div class="pdv-filter-menu" id="pdvFilterMenu">
+              <label><input type="checkbox" id="pdvFilterAll" checked> Todos os PDVs</label>
+              <hr>
+              <div id="pdvFilterList"></div>
+            </div>
+          </div>
+          <div class="date-nav">
+            <button id="prevDay" class="icon-button" aria-label="Dia anterior"><i data-lucide="chevron-left"></i></button>
+            <button class="period-button" id="dateLabelButton"><i data-lucide="calendar-days"></i><span id="currentDate">Hoje</span></button>
+            <input type="date" id="dateInput" class="date-input-hidden">
+            <button id="nextDay" class="icon-button" aria-label="Próximo dia"><i data-lucide="chevron-right"></i></button>
+          </div>
           <button class="icon-button notification-button" aria-label="Notificações"><i data-lucide="bell"></i><span id="notifBadge">0</span></button>
           <div class="profile">
             <div class="avatar">EM</div>
@@ -86,11 +99,11 @@
           </article>
           <article>
             <div class="metric-icon blue"><i data-lucide="banknote"></i></div>
-            <div><span>Vendido hoje</span><strong>R$ 48.392,70</strong></div>
+            <div><span>Vendido hoje</span><strong id="metricVendidoHoje">R$ 0,00</strong></div>
           </article>
           <article>
             <div class="metric-icon cyan"><i data-lucide="receipt"></i></div>
-            <div><span>Cupons fechados</span><strong>846</strong></div>
+            <div><span>Cupons fechados</span><strong id="metricCuponsFechados">0</strong></div>
           </article>
           <article>
             <div class="metric-icon red"><i data-lucide="triangle-alert"></i></div>

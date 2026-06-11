@@ -5,6 +5,10 @@ let alerts = [];
 let health = [];
 let activeFilter = "all";
 let selectedAlert = null;
+let selectedDate = formatDateInput(new Date());
+let pdvFilterAll = true;
+let selectedPdvs = new Set();
+let pdvsConhecidos = [];
 
 const table = document.getElementById("alertsTable");
 const drawer = document.getElementById("alertDrawer");
@@ -13,7 +17,8 @@ const toast = document.getElementById("toast");
 
 async function carregarAlertas() {
   try {
-    const params = new URLSearchParams({ loja: LOJA, filter: "all" });
+    const params = new URLSearchParams({ loja: LOJA, filter: "all", data: selectedDate });
+    if (!pdvFilterAll) selectedPdvs.forEach(pdv => params.append("pdv", pdv));
     const resp = await fetch(`/api/v1/alerts?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     alerts = await resp.json();
@@ -33,8 +38,122 @@ async function carregarHealth() {
   } catch (err) {
     // mantem os dados anteriores em caso de falha temporaria de rede
   }
+  atualizarListaPdvs();
   renderHealth();
   renderHealthMetric();
+}
+
+function formatDateInput(d) {
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function isHoje(dataStr) {
+  return dataStr === formatDateInput(new Date());
+}
+
+function somarDias(dataStr, dias) {
+  const [ano, mes, dia] = dataStr.split("-").map(Number);
+  const dt = new Date(ano, mes - 1, dia);
+  dt.setDate(dt.getDate() + dias);
+  return formatDateInput(dt);
+}
+
+function atualizarRotuloData() {
+  const span = document.getElementById("currentDate");
+  const dateInput = document.getElementById("dateInput");
+  dateInput.value = selectedDate;
+  dateInput.max = formatDateInput(new Date());
+  if (isHoje(selectedDate)) {
+    span.textContent = "Hoje";
+  } else {
+    const [ano, mes, dia] = selectedDate.split("-").map(Number);
+    const dt = new Date(ano, mes - 1, dia);
+    span.textContent = dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "");
+  }
+  document.getElementById("nextDay").disabled = isHoje(selectedDate);
+}
+
+function mudarData(novaData) {
+  selectedDate = novaData;
+  atualizarRotuloData();
+  carregarAlertas();
+  carregarVendas();
+}
+
+function pdvSelecionado(pdv) {
+  return pdvFilterAll || selectedPdvs.has(pdv);
+}
+
+function atualizarListaPdvs() {
+  const novos = [...new Set(health.map(item => item.pdv))].sort();
+  if (JSON.stringify(novos) === JSON.stringify(pdvsConhecidos)) return;
+  pdvsConhecidos = novos;
+  if (!pdvFilterAll) {
+    selectedPdvs = new Set([...selectedPdvs].filter(pdv => pdvsConhecidos.includes(pdv)));
+  }
+  renderPdvFilter();
+}
+
+function renderPdvFilter() {
+  document.getElementById("pdvFilterAll").checked = pdvFilterAll;
+  const list = document.getElementById("pdvFilterList");
+  list.innerHTML = pdvsConhecidos.map(pdv => `
+    <label><input type="checkbox" data-pdv="${pdv}" ${pdvSelecionado(pdv) ? "checked" : ""}> PDV ${pdv}</label>
+  `).join("");
+  list.querySelectorAll("input[type='checkbox']").forEach(checkbox => {
+    checkbox.addEventListener("change", () => {
+      if (pdvFilterAll) {
+        selectedPdvs = new Set(pdvsConhecidos);
+        pdvFilterAll = false;
+      }
+      if (checkbox.checked) selectedPdvs.add(checkbox.dataset.pdv);
+      else selectedPdvs.delete(checkbox.dataset.pdv);
+
+      if (selectedPdvs.size === 0 || selectedPdvs.size === pdvsConhecidos.length) {
+        pdvFilterAll = true;
+        selectedPdvs = new Set();
+      }
+      aplicarFiltroPdv();
+    });
+  });
+}
+
+function atualizarRotuloFiltroPdvs() {
+  const label = document.getElementById("pdvFilterLabel");
+  if (pdvFilterAll) {
+    label.textContent = "Todos os PDVs";
+  } else if (selectedPdvs.size === 1) {
+    label.textContent = `PDV ${[...selectedPdvs][0]}`;
+  } else {
+    label.textContent = `${selectedPdvs.size} PDVs`;
+  }
+}
+
+function aplicarFiltroPdv() {
+  renderPdvFilter();
+  atualizarRotuloFiltroPdvs();
+  renderHealth();
+  renderHealthMetric();
+  carregarAlertas();
+  carregarVendas();
+}
+
+async function carregarVendas() {
+  try {
+    const params = new URLSearchParams({ loja: LOJA, data: selectedDate });
+    if (!pdvFilterAll) selectedPdvs.forEach(pdv => params.append("pdv", pdv));
+    const resp = await fetch(`/api/v1/sales?${params}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const vendas = await resp.json();
+    document.getElementById("metricVendidoHoje").textContent =
+      `R$ ${vendas.total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    document.getElementById("metricCuponsFechados").textContent = vendas.cupons;
+  } catch (err) {
+    // mantem os dados anteriores em caso de falha temporaria de rede
+  }
 }
 
 function renderAlerts() {
@@ -62,7 +181,7 @@ function renderAlerts() {
       <td><span class="severity ${alert.severity}"><i></i>${alert.severity === "critical" ? "Crítico" : alert.severity === "warning" ? "Atenção" : "Normal"}</span></td>
       <td>${alert.time}</td>
       <td class="receipt-cell"><strong>${alert.pdv}</strong><span>Cupom ${alert.receipt}</span></td>
-      <td><div class="event-cell"><img class="mini-cctv" src="assets/frame-register.svg" alt=""><div><strong>${alert.event}</strong><span>${alert.subtitle}</span></div></div></td>
+      <td><div class="event-cell"><img class="mini-cctv" src="${alert.imageUrl}" onerror="this.src='assets/frame-register.svg'" alt=""><div><strong>${alert.event}</strong><span>${alert.subtitle}</span></div></div></td>
       <td class="product-cell"><strong>${alert.product}</strong><span>${alert.qty} · ${alert.value}</span></td>
       <td><div class="confidence"><span>${alert.confidence}%</span><i class="confidence-meter"><i style="width:${alert.confidence}%"></i></i></div></td>
       <td><span class="state-badge ${alert.state}">${alert.stateText}</span></td>
@@ -86,11 +205,12 @@ function renderAlerts() {
 
 function renderHealth() {
   const grid = document.getElementById("healthGrid");
-  if (health.length === 0) {
+  const filtrado = health.filter(item => pdvSelecionado(item.pdv));
+  if (filtrado.length === 0) {
     grid.innerHTML = `<div class="health-row"><strong>Sem dados de saude ainda.</strong></div>`;
     return;
   }
-  grid.innerHTML = health.map(item => `
+  grid.innerHTML = filtrado.map(item => `
     <div class="health-row">
       <strong>PDV ${item.pdv}</strong>
       ${serviceState(item.bridge)}
@@ -106,8 +226,9 @@ function serviceState(state) {
 }
 
 function renderHealthMetric() {
-  const total = health.length;
-  const online = health.filter(item => item.bridge === "online" && item.imhdx === "online" && item.audit === "online").length;
+  const filtrado = health.filter(item => pdvSelecionado(item.pdv));
+  const total = filtrado.length;
+  const online = filtrado.filter(item => item.bridge === "online" && item.imhdx === "online" && item.audit === "online").length;
   document.getElementById("metricPdvsTotal").firstChild.textContent = `${total} `;
   document.getElementById("metricPdvsOnline").textContent = `/ ${online} online`;
 }
@@ -313,9 +434,41 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   });
 });
 
+document.getElementById("pdvFilterButton").addEventListener("click", () => {
+  document.getElementById("pdvFilterMenu").classList.toggle("open");
+});
+document.addEventListener("click", event => {
+  if (!document.querySelector(".pdv-filter").contains(event.target)) {
+    document.getElementById("pdvFilterMenu").classList.remove("open");
+  }
+});
+document.getElementById("pdvFilterAll").addEventListener("change", event => {
+  pdvFilterAll = event.target.checked;
+  selectedPdvs = pdvFilterAll ? new Set() : new Set(pdvsConhecidos);
+  aplicarFiltroPdv();
+});
+
+document.getElementById("prevDay").addEventListener("click", () => mudarData(somarDias(selectedDate, -1)));
+document.getElementById("nextDay").addEventListener("click", () => {
+  if (!isHoje(selectedDate)) mudarData(somarDias(selectedDate, 1));
+});
+document.getElementById("dateLabelButton").addEventListener("click", () => {
+  const input = document.getElementById("dateInput");
+  if (input.showPicker) input.showPicker();
+  else input.focus();
+});
+document.getElementById("dateInput").addEventListener("change", event => mudarData(event.target.value));
+
+atualizarRotuloData();
 carregarAlertas();
 carregarHealth();
+carregarVendas();
 lucide.createIcons();
 
-setInterval(carregarAlertas, REFRESH_INTERVAL_MS);
+setInterval(() => {
+  if (isHoje(selectedDate)) carregarAlertas();
+}, REFRESH_INTERVAL_MS);
 setInterval(carregarHealth, REFRESH_INTERVAL_MS);
+setInterval(() => {
+  if (isHoje(selectedDate)) carregarVendas();
+}, REFRESH_INTERVAL_MS);

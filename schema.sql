@@ -41,3 +41,13 @@ CREATE TABLE IF NOT EXISTS pdv_health (
     atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (loja_id, pdv)
 );
+
+CREATE TABLE IF NOT EXISTS pdv_sales (
+    loja_id TEXT NOT NULL REFERENCES lojas(id),
+    pdv TEXT NOT NULL,
+    data TEXT NOT NULL,
+    total REAL NOT NULL DEFAULT 0,
+    cupons INTEGER NOT NULL DEFAULT 0,
+    atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (loja_id, pdv, data)
+);

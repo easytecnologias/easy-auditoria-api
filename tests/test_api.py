@@ -331,6 +331,117 @@ def test_decision_ignore_apaga_video(client):
     assert resp.status_code == 404
 
 
+def test_vendas_sem_dados_retorna_zero(client):
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 0, "cupons": 0}
+
+
+def test_vendas_sem_token_e_rejeitado(client):
+    resp = client.post("/api/v1/sales", json={"pdv": "01", "total": 100.0, "cupons": 5})
+    assert resp.status_code == 401
+
+
+def test_vendas_post_e_get(client):
+    resp = client.post(
+        "/api/v1/sales",
+        json={"pdv": "01", "total": 1234.5, "cupons": 10},
+        headers=auth_headers(),
+    )
+    assert resp.status_code == 200
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    assert resp.json() == {"total": 1234.5, "cupons": 10}
+
+
+def test_vendas_atualiza_em_vez_de_somar_por_pdv(client):
+    client.post("/api/v1/sales", json={"pdv": "01", "total": 100.0, "cupons": 1}, headers=auth_headers())
+    client.post("/api/v1/sales", json={"pdv": "01", "total": 250.0, "cupons": 3}, headers=auth_headers())
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    assert resp.json() == {"total": 250.0, "cupons": 3}
+
+
+def test_vendas_soma_varios_pdvs(client):
+    client.post("/api/v1/sales", json={"pdv": "01", "total": 100.0, "cupons": 1}, headers=auth_headers())
+    client.post("/api/v1/sales", json={"pdv": "02", "total": 50.0, "cupons": 2}, headers=auth_headers())
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    assert resp.json() == {"total": 150.0, "cupons": 3}
+
+
+def test_loja_inexistente_em_vendas_retorna_404(client):
+    resp = client.get("/api/v1/sales", params={"loja": "loja-inexistente"})
+    assert resp.status_code == 404
+
+
+def test_vendas_por_data_especifica(client):
+    client.post(
+        "/api/v1/sales",
+        json={"pdv": "01", "total": 100.0, "cupons": 5, "data": "2026-06-09"},
+        headers=auth_headers(),
+    )
+    client.post(
+        "/api/v1/sales",
+        json={"pdv": "01", "total": 200.0, "cupons": 8, "data": "2026-06-10"},
+        headers=auth_headers(),
+    )
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-09"})
+    assert resp.json() == {"total": 100.0, "cupons": 5}
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10"})
+    assert resp.json() == {"total": 200.0, "cupons": 8}
+
+
+def test_alertas_filtra_por_data(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-10"})
+    assert len(resp.json()) == 1
+
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-09"})
+    assert resp.json() == []
+
+
+def test_alertas_filtra_por_pdv(client):
+    client.post("/api/v1/events", json=evento_payload(pdv="01"), headers=auth_headers())
+    client.post(
+        "/api/v1/events",
+        json=evento_payload(pdv="02", timestamp="2026-06-10T15:00:00"),
+        headers=auth_headers(),
+    )
+
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "01"})
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["pdv"] == "PDV 01"
+
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": ["01", "02"]})
+    assert len(resp.json()) == 2
+
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "03"})
+    assert resp.json() == []
+
+
+def test_vendas_filtra_por_pdv(client):
+    client.post(
+        "/api/v1/sales",
+        json={"pdv": "01", "total": 100.0, "cupons": 5, "data": "2026-06-10"},
+        headers=auth_headers(),
+    )
+    client.post(
+        "/api/v1/sales",
+        json={"pdv": "02", "total": 50.0, "cupons": 2, "data": "2026-06-10"},
+        headers=auth_headers(),
+    )
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": "01"})
+    assert resp.json() == {"total": 100.0, "cupons": 5}
+
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": ["01", "02"]})
+    assert resp.json() == {"total": 150.0, "cupons": 7}
+
+
 def test_decision_save_mantem_video(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
     alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]

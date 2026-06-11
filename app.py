@@ -3,10 +3,11 @@ import os
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -59,6 +60,9 @@ def init_db() -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
+        colunas = {row["name"] for row in conn.execute("PRAGMA table_info(pdv_sales)").fetchall()}
+        if colunas and "data" not in colunas:
+            conn.execute("DROP TABLE pdv_sales")
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         row = conn.execute("SELECT id FROM lojas WHERE id = ?", ("loja-106",)).fetchone()
         if row is None:
@@ -136,6 +140,13 @@ class HealthItemIn(BaseModel):
     audit: str
 
 
+class SalesIn(BaseModel):
+    pdv: str
+    total: float
+    cupons: int
+    data: Optional[str] = None
+
+
 @app.post("/api/v1/events")
 def criar_evento(
     evento: EventoIn,
@@ -204,6 +215,50 @@ def atualizar_health(
     return {"ok": True}
 
 
+@app.post("/api/v1/sales")
+def atualizar_vendas(
+    vendas: SalesIn,
+    loja: sqlite3.Row = Depends(autenticar_loja),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    data = vendas.data or date.today().isoformat()
+    db.execute(
+        """
+        INSERT INTO pdv_sales (loja_id, pdv, data, total, cupons, atualizado_em)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT (loja_id, pdv, data) DO UPDATE SET
+            total = excluded.total,
+            cupons = excluded.cupons,
+            atualizado_em = excluded.atualizado_em
+        """,
+        (loja["id"], vendas.pdv, data, vendas.total, vendas.cupons),
+    )
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/v1/sales")
+def obter_vendas(
+    loja: str,
+    data: Optional[str] = None,
+    pdv: list[str] = Query(default=[]),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    loja_row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
+    if loja_row is None:
+        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+
+    data = data or date.today().isoformat()
+    query = "SELECT COALESCE(SUM(total), 0) AS total, COALESCE(SUM(cupons), 0) AS cupons FROM pdv_sales WHERE loja_id = ? AND data = ?"
+    params: list = [loja_row["id"], data]
+    if pdv:
+        query += f" AND pdv IN ({','.join('?' * len(pdv))})"
+        params.extend(pdv)
+
+    row = db.execute(query, params).fetchone()
+    return {"total": row["total"], "cupons": row["cupons"]}
+
+
 def _formatar_pdv(pdv: str) -> str:
     pdv = (pdv or "").strip()
     if not pdv:
@@ -256,6 +311,8 @@ def _evento_para_alerta(row: sqlite3.Row) -> dict:
 def listar_alertas(
     loja: str,
     filter: str = "all",
+    data: Optional[str] = None,
+    pdv: list[str] = Query(default=[]),
     db: sqlite3.Connection = Depends(get_db),
 ):
     loja_row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
@@ -264,6 +321,12 @@ def listar_alertas(
 
     query = "SELECT * FROM auditoria_eventos WHERE loja_id = ?"
     params: list = [loja_row["id"]]
+    if data:
+        query += " AND timestamp LIKE ?"
+        params.append(f"{data}%")
+    if pdv:
+        query += f" AND pdv IN ({','.join('?' * len(pdv))})"
+        params.extend(pdv)
     if filter == "critical":
         query += " AND severidade = 'critical'"
     elif filter == "review":
