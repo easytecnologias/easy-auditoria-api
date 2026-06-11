@@ -13,6 +13,7 @@ from pydantic import BaseModel
 DB_PATH = Path(os.environ.get("DB_PATH", "/data/easy-auditoria.db"))
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
+VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", "/data/videos"))
 
 RESULTADO_LABELS = {
     "CONFERE": "Confere",
@@ -56,6 +57,7 @@ def status_de_resultado(resultado: Optional[str]) -> str:
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         row = conn.execute("SELECT id FROM lojas WHERE id = ?", ("loja-106",)).fetchone()
@@ -246,6 +248,7 @@ def _evento_para_alerta(row: sqlite3.Row) -> dict:
         "analysis": row["comparacao_pdv"] or "",
         "note": row["possivel_divergencia"] or "",
         "imageUrl": f"/api/v1/events/{row['id']}/image",
+        "videoUrl": f"/api/v1/events/{row['id']}/video",
     }
 
 
@@ -290,6 +293,10 @@ def _imagem_path(evento_id: int) -> Path:
     return IMAGES_DIR / f"{evento_id}.jpg"
 
 
+def _video_path(evento_id: int) -> Path:
+    return VIDEOS_DIR / f"{evento_id}.mp4"
+
+
 @app.post("/api/v1/events/{evento_id}/image")
 def enviar_imagem_evento(
     evento_id: int,
@@ -315,6 +322,31 @@ def obter_imagem_evento(evento_id: int):
     return FileResponse(caminho, media_type="image/jpeg")
 
 
+@app.post("/api/v1/events/{evento_id}/video")
+def enviar_video_evento(
+    evento_id: int,
+    file: UploadFile,
+    loja: sqlite3.Row = Depends(autenticar_loja),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    row = db.execute(
+        "SELECT id FROM auditoria_eventos WHERE id = ? AND loja_id = ?",
+        (evento_id, loja["id"]),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Evento nao encontrado")
+    _video_path(evento_id).write_bytes(file.file.read())
+    return {"ok": True}
+
+
+@app.get("/api/v1/events/{evento_id}/video")
+def obter_video_evento(evento_id: int):
+    caminho = _video_path(evento_id)
+    if not caminho.is_file():
+        raise HTTPException(status_code=404, detail="Video nao encontrado")
+    return FileResponse(caminho, media_type="video/mp4")
+
+
 class DecisionIn(BaseModel):
     action: str
 
@@ -333,4 +365,5 @@ def decidir_alerta(alerta_id: int, decisao: DecisionIn, db: sqlite3.Connection =
         raise HTTPException(status_code=404, detail="Alerta nao encontrado")
     if decisao.action == "ignore":
         _imagem_path(alerta_id).unlink(missing_ok=True)
+        _video_path(alerta_id).unlink(missing_ok=True)
     return {"ok": True, "status": novo_status}

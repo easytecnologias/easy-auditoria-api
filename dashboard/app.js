@@ -5,8 +5,6 @@ let alerts = [];
 let health = [];
 let activeFilter = "all";
 let selectedAlert = null;
-let videoTimer = null;
-let videoSecond = 0;
 
 const table = document.getElementById("alertsTable");
 const drawer = document.getElementById("alertDrawer");
@@ -234,35 +232,25 @@ function showToast(message) {
 
 function openVideo() {
   document.getElementById("videoModal").classList.add("open");
-  document.querySelector(".video-meta span").textContent = `${selectedAlert.pdv} · Cupom ${selectedAlert.receipt}`;
+  document.getElementById("videoMeta").textContent = `${selectedAlert.pdv} · Cupom ${selectedAlert.receipt}`;
   resetVideo();
+
+  const video = document.getElementById("eventVideo");
+  const unavailable = document.getElementById("videoUnavailable");
+  video.hidden = false;
+  unavailable.hidden = true;
+  video.onerror = () => {
+    video.hidden = true;
+    unavailable.hidden = false;
+  };
+  video.src = selectedAlert.videoUrl;
+  video.load();
 }
 
 function resetVideo() {
-  clearInterval(videoTimer);
-  videoTimer = null;
-  videoSecond = 0;
-  document.getElementById("videoProgress").style.width = "0%";
-  document.getElementById("videoClock").textContent = "00:00 / 00:20";
-  document.getElementById("playToggle").innerHTML = '<i data-lucide="play"></i>';
-  lucide.createIcons();
-}
-
-function toggleVideo() {
-  if (videoTimer) {
-    clearInterval(videoTimer);
-    videoTimer = null;
-    document.getElementById("playToggle").innerHTML = '<i data-lucide="play"></i>';
-  } else {
-    document.getElementById("playToggle").innerHTML = '<i data-lucide="pause"></i>';
-    videoTimer = setInterval(() => {
-      videoSecond += 1;
-      document.getElementById("videoProgress").style.width = `${videoSecond * 5}%`;
-      document.getElementById("videoClock").textContent = `00:${String(videoSecond).padStart(2,"0")} / 00:20`;
-      if (videoSecond >= 20) resetVideo();
-    }, 1000);
-  }
-  lucide.createIcons();
+  const video = document.getElementById("eventVideo");
+  video.pause();
+  video.currentTime = 0;
 }
 
 async function enviarDecisao(alertaId, action) {
@@ -316,7 +304,6 @@ document.getElementById("closeVideo").addEventListener("click", () => {
   document.getElementById("videoModal").classList.remove("open");
   resetVideo();
 });
-document.getElementById("playToggle").addEventListener("click", toggleVideo);
 document.querySelector(".mobile-menu").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("open"));
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {

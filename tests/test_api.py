@@ -11,6 +11,7 @@ def client(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("IMAGES_DIR", str(tmp_path / "images"))
+    monkeypatch.setenv("VIDEOS_DIR", str(tmp_path / "videos"))
     monkeypatch.setenv("LOJA_106_TOKEN", "token-teste")
 
     import app as app_module
@@ -272,4 +273,74 @@ def test_decision_save_mantem_imagem(client):
     client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
 
     resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    assert resp.status_code == 200
+
+
+def test_evento_tem_video_url(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]
+    assert alerta["videoUrl"] == f"/api/v1/events/{alerta['id']}/video"
+
+
+def test_video_inexistente_retorna_404(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    assert resp.status_code == 404
+
+
+def test_upload_e_obtencao_de_video(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    resp = client.post(
+        f"/api/v1/events/{alerta_id}/video",
+        files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
+        headers=auth_headers(),
+    )
+    assert resp.status_code == 200
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    assert resp.status_code == 200
+    assert resp.content == b"fake-mp4-bytes"
+
+
+def test_upload_video_sem_token_e_rejeitado(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    resp = client.post(
+        f"/api/v1/events/{alerta_id}/video",
+        files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
+    )
+    assert resp.status_code == 401
+
+
+def test_decision_ignore_apaga_video(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    client.post(
+        f"/api/v1/events/{alerta_id}/video",
+        files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
+        headers=auth_headers(),
+    )
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"})
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    assert resp.status_code == 404
+
+
+def test_decision_save_mantem_video(client):
+    client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+
+    client.post(
+        f"/api/v1/events/{alerta_id}/video",
+        files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
+        headers=auth_headers(),
+    )
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
+
+    resp = client.get(f"/api/v1/events/{alerta_id}/video")
     assert resp.status_code == 200

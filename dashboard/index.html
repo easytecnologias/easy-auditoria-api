@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <style>
+    .video-simulation #eventVideo {
+      width: 100%;
+      max-height: 70vh;
+      display: block;
+      background: #000;
+    }
+    .video-simulation .video-unavailable {
+      padding: 40px 16px;
+      text-align: center;
+      color: #6b7280;
+    }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -219,10 +232,9 @@
     <div class="video-modal">
       <div class="modal-header"><div><p class="eyebrow">Gravação POS · iMHDX</p><h2>Vídeo do evento</h2></div><button id="closeVideo" class="icon-button"><i data-lucide="x"></i></button></div>
       <div class="video-simulation">
-        <img src="assets/frame-register.svg" alt="Simulação do vídeo do caixa">
-        <button id="playToggle" class="play-toggle"><i data-lucide="play"></i></button>
-        <div class="video-progress"><span id="videoProgress"></span></div>
-        <div class="video-meta"><span>PDV 01 · Cupom 221548</span><span id="videoClock">00:00 / 00:20</span></div>
+        <video id="eventVideo" controls preload="metadata"></video>
+        <div id="videoUnavailable" class="video-unavailable" hidden>Vídeo não disponível para este evento.</div>
+        <div class="video-meta"><span id="videoMeta">PDV 01 · Cupom 221548</span></div>
       </div>
     </div>
   </div>
