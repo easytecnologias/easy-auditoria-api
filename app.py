@@ -1,21 +1,39 @@
 import json
 import os
+import re
 import secrets
 import sqlite3
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 import bcrypt
 from jose import JWTError, jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    import sys
+    JWT_SECRET = secrets.token_hex(32)
+    print("[AVISO] JWT_SECRET nao definido — tokens serao invalidados ao reiniciar. "
+          "Defina JWT_SECRET no ambiente de producao.", file=sys.stderr)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = int(os.environ.get("JWT_EXPIRE_HOURS", "8"))
+LOGIN_LIMIT_ATTEMPTS = int(os.environ.get("LOGIN_LIMIT_ATTEMPTS", "8"))
+LOGIN_LIMIT_WINDOW_SECONDS = int(os.environ.get("LOGIN_LIMIT_WINDOW_SECONDS", "300"))
+MAX_IMAGE_BYTES = int(os.environ.get("MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
+MAX_VIDEO_BYTES = int(os.environ.get("MAX_VIDEO_BYTES", str(250 * 1024 * 1024)))
+SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+PDV_RE = re.compile(r"^[A-Za-z0-9_-]{1,16}$")
+LOGIN_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
+_LOGIN_ATTEMPTS_LAST_CLEAN: float = 0.0
 
 
 def _hash_senha(senha: str) -> str:
@@ -24,6 +42,62 @@ def _hash_senha(senha: str) -> str:
 
 def _verificar_senha(senha: str, hash_: str) -> bool:
     return bcrypt.checkpw(senha.encode(), hash_.encode())
+
+
+def _validar_safe_id(valor: str, campo: str) -> str:
+    valor = (valor or "").strip()
+    if not SAFE_ID_RE.fullmatch(valor):
+        raise HTTPException(status_code=422, detail=f"{campo} invalido")
+    return valor
+
+
+def _validar_pdv(valor: str) -> str:
+    valor = (valor or "").strip()
+    if not PDV_RE.fullmatch(valor):
+        raise HTTPException(status_code=422, detail="PDV invalido")
+    return valor
+
+
+def _validar_data(valor: Optional[str]) -> Optional[str]:
+    if valor is None:
+        return None
+    valor = valor.strip()
+    if not DATE_RE.fullmatch(valor):
+        raise HTTPException(status_code=422, detail="Data invalida. Use AAAA-MM-DD")
+    return valor
+
+
+def _ler_upload(file: UploadFile, max_bytes: int, tipos: set[str]) -> bytes:
+    if file.content_type not in tipos:
+        raise HTTPException(status_code=415, detail="Tipo de arquivo nao permitido")
+    data = file.file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande")
+    return data
+
+
+def _rate_limit_login(chave: str) -> None:
+    global _LOGIN_ATTEMPTS_LAST_CLEAN
+    agora = time.monotonic()
+    # Limpar chaves inativas a cada 10 minutos para evitar crescimento ilimitado
+    if agora - _LOGIN_ATTEMPTS_LAST_CLEAN > 600:
+        expirado = [k for k, q in LOGIN_ATTEMPTS.items() if not q or agora - q[-1] > LOGIN_LIMIT_WINDOW_SECONDS]
+        for k in expirado:
+            del LOGIN_ATTEMPTS[k]
+        _LOGIN_ATTEMPTS_LAST_CLEAN = agora
+    fila = LOGIN_ATTEMPTS[chave]
+    while fila and agora - fila[0] > LOGIN_LIMIT_WINDOW_SECONDS:
+        fila.popleft()
+    if len(fila) >= LOGIN_LIMIT_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Aguarde e tente novamente")
+    fila.append(agora)
+
+
+def _validar_datetime(valor: str, campo: str = "datetime") -> str:
+    valor = (valor or "").strip()
+    if not DATETIME_RE.fullmatch(valor):
+        raise HTTPException(status_code=422, detail=f"{campo} invalido. Use AAAA-MM-DD HH:MM:SS")
+    return valor
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/data/easy-auditoria.db"))
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
@@ -34,26 +108,25 @@ PURCHASE_VIDEOS_DIR = Path(os.environ.get("PURCHASE_VIDEOS_DIR", "/data/purchase
 RESULTADO_LABELS = {
     "CONFERE": "Confere",
     "CONFERE_POR_REGRA_DE_VALOR": "Confere",
-    "NAO_CONFERE": "Não confere",
+    "NAO_CONFERE": "Nao confere",
     "INCONCLUSIVO": "Inconclusivo",
-    "NAO_ANALISADO": "Não analisado",
+    "NAO_ANALISADO": "Nao analisado",
 }
 
 EVENTO_LABELS = {
-    "CONFERE": ("Conferido", "Produto e registro compatíveis"),
+    "CONFERE": ("Conferido", "Produto e registro compativeis"),
     "CONFERE_POR_REGRA_DE_VALOR": ("Conferido", "Liberado por regra de valor"),
-    "NAO_CONFERE": ("Produto incompatível", "Divergência identificada na análise visual"),
-    "INCONCLUSIVO": ("Imagem inconclusiva", "Revisão manual recomendada"),
-    "NAO_ANALISADO": ("Sem análise visual", "Auditoria visual não executada"),
+    "NAO_CONFERE": ("Produto incompativel", "Divergencia identificada na analise visual"),
+    "INCONCLUSIVO": ("Imagem inconclusiva", "Revisao manual recomendada"),
+    "NAO_ANALISADO": ("Sem analise visual", "Auditoria visual nao executada"),
 }
 
 STATE_LABELS = {
-    "pending": "Em revisão",
+    "pending": "Em revisao",
     "review": "Revisar",
     "resolved": "Salvo",
     "ignored": "Ignorado",
 }
-
 
 def severidade_de_acao(acao_recomendada: Optional[str]) -> str:
     acao = (acao_recomendada or "").strip().lower()
@@ -90,7 +163,7 @@ def init_db() -> None:
                 ("loja-106", "loja-106", "Loja 106", token),
             )
             conn.commit()
-            print(f"[easy-auditoria-api] Token da loja-106: {token}")
+            print("[easy-auditoria-api] Loja inicial criada. Guarde o token fora dos logs.")
         admin = conn.execute("SELECT id FROM usuarios WHERE perfil = 'admin' LIMIT 1").fetchone()
         if admin is None:
             senha = os.environ.get("ADMIN_PASSWORD") or secrets.token_urlsafe(12)
@@ -99,7 +172,7 @@ def init_db() -> None:
                 ("Administrador", "admin@easy.local", _hash_senha(senha)),
             )
             conn.commit()
-            print(f"[easy-auditoria-api] Admin criado — email: admin@easy.local  senha: {senha}")
+            print("[easy-auditoria-api] Admin inicial criado. Guarde a senha fora dos logs.")
 
 
 @contextmanager
@@ -127,6 +200,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Easy Auditoria API", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
 # --- JWT helpers ---
 
 def _criar_token(usuario_id: int) -> str:
@@ -139,7 +224,7 @@ def _decode_token(token: str) -> int:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return int(payload["sub"])
     except (JWTError, KeyError, ValueError):
-        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+        raise HTTPException(status_code=401, detail="Token invÃ¡lido ou expirado")
 
 
 def autenticar_usuario(
@@ -151,32 +236,65 @@ def autenticar_usuario(
     usuario_id = _decode_token(authorization[len("Bearer "):].strip())
     row = db.execute("SELECT * FROM usuarios WHERE id = ? AND ativo = 1", (usuario_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=401, detail="Usuário inativo ou não encontrado")
+        raise HTTPException(status_code=401, detail="UsuÃ¡rio inativo ou nÃ£o encontrado")
     return row
 
 
 def requer_perfil(*perfis: str):
     def dep(usuario: sqlite3.Row = Depends(autenticar_usuario)) -> sqlite3.Row:
         if usuario["perfil"] not in perfis:
-            raise HTTPException(status_code=403, detail="Sem permissão")
+            raise HTTPException(status_code=403, detail="Sem permissÃ£o")
         return usuario
     return dep
+
+
+def _usuario_pode_acessar_loja(usuario: sqlite3.Row, loja_id: str) -> bool:
+    return usuario["perfil"] == "admin" or usuario["loja_id"] == loja_id
+
+
+def _loja_por_slug_autorizada(
+    loja_slug: str,
+    usuario: sqlite3.Row,
+    db: sqlite3.Connection,
+) -> sqlite3.Row:
+    loja_slug = _validar_safe_id(loja_slug, "Loja")
+    loja_row = db.execute("SELECT id, slug, nome FROM lojas WHERE slug = ?", (loja_slug,)).fetchone()
+    if loja_row is None:
+        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+    if not _usuario_pode_acessar_loja(usuario, loja_row["id"]):
+        raise HTTPException(status_code=403, detail="Sem permissao para esta loja")
+    return loja_row
+
+
+def _evento_autorizado(
+    evento_id: int,
+    usuario: sqlite3.Row,
+    db: sqlite3.Connection,
+) -> sqlite3.Row:
+    row = db.execute("SELECT id, loja_id FROM auditoria_eventos WHERE id = ?", (evento_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Evento nao encontrado")
+    if not _usuario_pode_acessar_loja(usuario, row["loja_id"]):
+        raise HTTPException(status_code=403, detail="Sem permissao para este evento")
+    return row
 
 
 # --- Auth endpoints ---
 
 class LoginIn(BaseModel):
-    email: str
-    senha: str
+    email: str = Field(min_length=3, max_length=254)
+    senha: str = Field(min_length=1, max_length=256)
 
 
 @app.post("/auth/login")
-def login(dados: LoginIn, db: sqlite3.Connection = Depends(get_db)):
+def login(request: Request, dados: LoginIn, db: sqlite3.Connection = Depends(get_db)):
+    ip = request.client.host if request.client else "unknown"
+    _rate_limit_login(f"{ip}:{dados.email.lower()}")
     row = db.execute(
         "SELECT * FROM usuarios WHERE email = ? AND ativo = 1", (dados.email,)
     ).fetchone()
     if row is None or not _verificar_senha(dados.senha, row["senha_hash"]):
-        raise HTTPException(status_code=401, detail="Email ou senha inválidos")
+        raise HTTPException(status_code=401, detail="Email ou senha invÃ¡lidos")
     return {
         "token": _criar_token(row["id"]),
         "usuario": {
@@ -200,37 +318,37 @@ def me(usuario: sqlite3.Row = Depends(autenticar_usuario)):
     }
 
 
-# --- CRUD de usuários ---
+# --- CRUD de usuÃ¡rios ---
 
 HIERARQUIA = {"admin": 3, "supervisor": 2, "operador": 1}
 
 
 class UsuarioIn(BaseModel):
-    nome: str
-    email: str
-    senha: str
-    perfil: str
-    loja_id: Optional[str] = None
+    nome: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=254)
+    senha: str = Field(min_length=8, max_length=256)
+    perfil: str = Field(pattern=r"^(admin|supervisor|operador)$")
+    loja_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class UsuarioUpdate(BaseModel):
-    nome: Optional[str] = None
-    email: Optional[str] = None
-    perfil: Optional[str] = None
-    loja_id: Optional[str] = None
-    ativo: Optional[int] = None
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    email: Optional[str] = Field(default=None, min_length=3, max_length=254)
+    perfil: Optional[str] = Field(default=None, pattern=r"^(admin|supervisor|operador)$")
+    loja_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    ativo: Optional[int] = Field(default=None, ge=0, le=1)
 
 
 class SenhaUpdate(BaseModel):
-    nova_senha: str
+    nova_senha: str = Field(min_length=8, max_length=256)
 
 
 def _pode_gerenciar(quem: sqlite3.Row, perfil_alvo: str, loja_alvo: Optional[str]) -> bool:
-    """Retorna True se `quem` tem autoridade para criar/editar um usuário com perfil_alvo na loja_alvo."""
+    """Retorna True se `quem` tem autoridade para criar/editar um usuÃ¡rio com perfil_alvo na loja_alvo."""
     if quem["perfil"] == "admin":
         return True
     if quem["perfil"] == "supervisor":
-        # supervisor só pode gerenciar operadores da própria loja
+        # supervisor sÃ³ pode gerenciar operadores da prÃ³pria loja
         return perfil_alvo == "operador" and quem["loja_id"] == loja_alvo
     return False
 
@@ -257,9 +375,9 @@ def criar_usuario(
     db: sqlite3.Connection = Depends(get_db),
 ):
     if dados.perfil not in HIERARQUIA:
-        raise HTTPException(status_code=400, detail="Perfil inválido")
+        raise HTTPException(status_code=400, detail="Perfil invÃ¡lido")
     if not _pode_gerenciar(usuario, dados.perfil, dados.loja_id):
-        raise HTTPException(status_code=403, detail="Sem permissão para criar este perfil")
+        raise HTTPException(status_code=403, detail="Sem permissÃ£o para criar este perfil")
     try:
         cur = db.execute(
             "INSERT INTO usuarios (nome, email, senha_hash, perfil, loja_id) VALUES (?, ?, ?, ?, ?)",
@@ -267,7 +385,7 @@ def criar_usuario(
         )
         db.commit()
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=409, detail="Email já cadastrado")
+        raise HTTPException(status_code=409, detail="Email jÃ¡ cadastrado")
     return {"ok": True, "id": cur.lastrowid}
 
 
@@ -280,11 +398,11 @@ def editar_usuario(
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado")
     perfil_novo = dados.perfil or alvo["perfil"]
     loja_nova = dados.loja_id if dados.loja_id is not None else alvo["loja_id"]
     if not _pode_gerenciar(usuario, perfil_novo, loja_nova):
-        raise HTTPException(status_code=403, detail="Sem permissão para editar este usuário")
+        raise HTTPException(status_code=403, detail="Sem permissÃ£o para editar este usuÃ¡rio")
     campos = {k: v for k, v in dados.model_dump().items() if v is not None}
     if not campos:
         return {"ok": True}
@@ -303,9 +421,9 @@ def redefinir_senha(
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado")
     if not _pode_gerenciar(usuario, alvo["perfil"], alvo["loja_id"]):
-        raise HTTPException(status_code=403, detail="Sem permissão")
+        raise HTTPException(status_code=403, detail="Sem permissÃ£o")
     db.execute(
         "UPDATE usuarios SET senha_hash = ? WHERE id = ?",
         (_hash_senha(dados.nova_senha), usuario_id),
@@ -322,11 +440,11 @@ def desativar_usuario(
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado")
     if not _pode_gerenciar(usuario, alvo["perfil"], alvo["loja_id"]):
-        raise HTTPException(status_code=403, detail="Sem permissão")
+        raise HTTPException(status_code=403, detail="Sem permissÃ£o")
     if usuario_id == usuario["id"]:
-        raise HTTPException(status_code=400, detail="Não é possível desativar o próprio usuário")
+        raise HTTPException(status_code=400, detail="NÃ£o Ã© possÃ­vel desativar o prÃ³prio usuÃ¡rio")
     db.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (usuario_id,))
     db.commit()
     return {"ok": True}
@@ -335,14 +453,14 @@ def desativar_usuario(
 # --- CRUD de lojas ---
 
 class LojaIn(BaseModel):
-    id: str
-    nome: str
-    pdv_nome: Optional[str] = None
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    nome: str = Field(min_length=1, max_length=120)
+    pdv_nome: Optional[str] = Field(default=None, max_length=120)
 
 
 class LojaUpdate(BaseModel):
-    nome: Optional[str] = None
-    pdv_nome: Optional[str] = None
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    pdv_nome: Optional[str] = Field(default=None, max_length=120)
 
 
 @app.get("/api/v1/lojas")
@@ -362,7 +480,7 @@ def criar_loja(
 ):
     loja_id = dados.id.strip().lower()
     if not loja_id:
-        raise HTTPException(status_code=400, detail="ID inválido")
+        raise HTTPException(status_code=400, detail="ID invÃ¡lido")
     token = secrets.token_hex(24)
     try:
         db.execute(
@@ -371,7 +489,7 @@ def criar_loja(
         )
         db.commit()
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=409, detail="ID já cadastrado")
+        raise HTTPException(status_code=409, detail="ID jÃ¡ cadastrado")
     return {"ok": True, "id": loja_id, "api_token": token}
 
 
@@ -384,7 +502,7 @@ def editar_loja(
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
-        raise HTTPException(status_code=404, detail="Loja não encontrada")
+        raise HTTPException(status_code=404, detail="Loja nÃ£o encontrada")
     campos = {k: v for k, v in dados.model_dump().items() if v is not None}
     if campos:
         sets = ", ".join(f"{k} = ?" for k in campos)
@@ -401,7 +519,7 @@ def excluir_loja(
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
-        raise HTTPException(status_code=404, detail="Loja não encontrada")
+        raise HTTPException(status_code=404, detail="Loja nÃ£o encontrada")
     eventos = db.execute(
         "SELECT COUNT(*) AS c FROM auditoria_eventos WHERE loja_id = ?", (loja_id,)
     ).fetchone()
@@ -420,7 +538,7 @@ def regenerar_token_loja(
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
-        raise HTTPException(status_code=404, detail="Loja não encontrada")
+        raise HTTPException(status_code=404, detail="Loja nÃ£o encontrada")
     token = secrets.token_hex(24)
     db.execute("UPDATE lojas SET api_token = ? WHERE id = ?", (token, loja_id))
     db.commit()
@@ -441,37 +559,37 @@ def autenticar_loja(
 
 
 class ResultadoIn(BaseModel):
-    resultado: str
-    confianca: Optional[int] = None
-    comparacao_pdv: Optional[str] = None
-    possivel_divergencia: Optional[str] = None
-    acao_recomendada: Optional[str] = None
+    resultado: str = Field(pattern=r"^(CONFERE|CONFERE_POR_REGRA_DE_VALOR|NAO_CONFERE|INCONCLUSIVO|NAO_ANALISADO)$")
+    confianca: Optional[int] = Field(default=None, ge=0, le=100)
+    comparacao_pdv: Optional[str] = Field(default=None, max_length=4000)
+    possivel_divergencia: Optional[str] = Field(default=None, max_length=4000)
+    acao_recomendada: Optional[str] = Field(default=None, max_length=80)
 
 
 class EventoIn(BaseModel):
-    timestamp: str
-    pdv: str
-    cupom: Optional[str] = None
-    imagem: Optional[str] = None
-    produto: str
-    valor_unitario: float
-    quantidade: float
-    modo: str
+    timestamp: str = Field(min_length=10, max_length=32)
+    pdv: str = Field(pattern=r"^[A-Za-z0-9_-]{1,16}$")
+    cupom: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    imagem: Optional[str] = Field(default=None, max_length=512)
+    produto: str = Field(min_length=1, max_length=255)
+    valor_unitario: float = Field(ge=0, le=100000)
+    quantidade: float = Field(ge=0, le=100000)
+    modo: str = Field(min_length=1, max_length=40)
     resultado: ResultadoIn
 
 
 class HealthItemIn(BaseModel):
-    pdv: str
-    bridge: str
-    imhdx: str
-    audit: str
+    pdv: str = Field(pattern=r"^[A-Za-z0-9_-]{1,16}$")
+    bridge: str = Field(max_length=40)
+    imhdx: str = Field(max_length=40)
+    audit: str = Field(max_length=40)
 
 
 class SalesIn(BaseModel):
-    pdv: str
-    total: float
-    cupons: int
-    data: Optional[str] = None
+    pdv: str = Field(pattern=r"^[A-Za-z0-9_-]{1,16}$")
+    total: float = Field(ge=0, le=100000000)
+    cupons: int = Field(ge=0, le=1000000)
+    data: Optional[str] = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 @app.post("/api/v1/events")
@@ -569,16 +687,16 @@ def obter_vendas(
     loja: str,
     data: Optional[str] = None,
     pdv: list[str] = Query(default=[]),
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    loja_row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
-    if loja_row is None:
-        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
-    data = data or date.today().isoformat()
+    data = _validar_data(data) or date.today().isoformat()
     query = "SELECT COALESCE(SUM(total), 0) AS total, COALESCE(SUM(cupons), 0) AS cupons FROM pdv_sales WHERE loja_id = ? AND data = ?"
     params: list = [loja_row["id"], data]
     if pdv:
+        pdv = [_validar_pdv(p) for p in pdv]
         query += f" AND pdv IN ({','.join('?' * len(pdv))})"
         params.extend(pdv)
 
@@ -624,7 +742,7 @@ def _evento_para_alerta(row: sqlite3.Row) -> dict:
         "code": "-",
         "confidence": row["confianca"] if row["confianca"] is not None else 0,
         "state": state,
-        "stateText": STATE_LABELS.get(status, "Em revisão"),
+        "stateText": STATE_LABELS.get(status, "Em revisÃ£o"),
         "qty": _formatar_qty(row["quantidade"] or 0),
         "value": _formatar_valor(row["valor"] or 0),
         "result": RESULTADO_LABELS.get(resultado, resultado),
@@ -642,21 +760,23 @@ def listar_alertas(
     data: Optional[str] = None,
     cupom: Optional[str] = None,
     pdv: list[str] = Query(default=[]),
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    loja_row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
-    if loja_row is None:
-        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
     query = "SELECT * FROM auditoria_eventos WHERE loja_id = ?"
     params: list = [loja_row["id"]]
     if data:
+        data = _validar_data(data)
         query += " AND timestamp LIKE ?"
         params.append(f"{data}%")
     if cupom:
+        cupom = _validar_safe_id(cupom, "Cupom")
         query += " AND cupom = ?"
         params.append(cupom)
     if pdv:
+        pdv = [_validar_pdv(p) for p in pdv]
         query += f" AND pdv IN ({','.join('?' * len(pdv))})"
         params.extend(pdv)
     if filter == "critical":
@@ -666,7 +786,7 @@ def listar_alertas(
     elif filter == "resolved":
         query += " AND status = 'resolved'"
 
-    # Quando busca por cupom específico: ordem cronológica (ASC)
+    # Quando busca por cupom especÃ­fico: ordem cronolÃ³gica (ASC)
     # Quando lista todos os alertas: mais recente primeiro (DESC)
     order = "ASC" if cupom else "DESC"
     query += f" ORDER BY timestamp {order} LIMIT 200"
@@ -675,10 +795,12 @@ def listar_alertas(
 
 
 @app.get("/api/v1/health")
-def listar_health(loja: str, db: sqlite3.Connection = Depends(get_db)):
-    loja_row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
-    if loja_row is None:
-        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+def listar_health(
+    loja: str,
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
     rows = db.execute(
         "SELECT pdv, bridge, imhdx, audit FROM pdv_health WHERE loja_id = ? ORDER BY pdv",
@@ -708,12 +830,17 @@ def enviar_imagem_evento(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Evento nao encontrado")
-    _imagem_path(evento_id).write_bytes(file.file.read())
+    _imagem_path(evento_id).write_bytes(_ler_upload(file, MAX_IMAGE_BYTES, {"image/jpeg", "image/png", "image/webp"}))
     return {"ok": True}
 
 
 @app.get("/api/v1/events/{evento_id}/image")
-def obter_imagem_evento(evento_id: int):
+def obter_imagem_evento(
+    evento_id: int,
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    _evento_autorizado(evento_id, usuario, db)
     caminho = _imagem_path(evento_id)
     if not caminho.is_file():
         raise HTTPException(status_code=404, detail="Imagem nao encontrada")
@@ -733,12 +860,17 @@ def enviar_video_evento(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Evento nao encontrado")
-    _video_path(evento_id).write_bytes(file.file.read())
+    _video_path(evento_id).write_bytes(_ler_upload(file, MAX_VIDEO_BYTES, {"video/mp4", "video/quicktime"}))
     return {"ok": True}
 
 
 @app.get("/api/v1/events/{evento_id}/video")
-def obter_video_evento(evento_id: int):
+def obter_video_evento(
+    evento_id: int,
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    _evento_autorizado(evento_id, usuario, db)
     caminho = _video_path(evento_id)
     if not caminho.is_file():
         raise HTTPException(status_code=404, detail="Video nao encontrado")
@@ -747,6 +879,8 @@ def obter_video_evento(evento_id: int):
 
 def _purchase_video_path(loja_id: int, pdv: str, cupom: str) -> Path:
     PURCHASE_VIDEOS_DIR.mkdir(exist_ok=True)
+    pdv = _validar_pdv(pdv)
+    cupom = _validar_safe_id(cupom, "Cupom")
     return PURCHASE_VIDEOS_DIR / f"{loja_id}_{pdv}_{cupom}.mp4"
 
 
@@ -760,14 +894,18 @@ def solicitar_video_cupom(
     usuario: sqlite3.Row = Depends(autenticar_usuario),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    cupom = _validar_safe_id(cupom, "Cupom")
+    pdv = _validar_pdv(pdv)
+    _validar_datetime(start_time, "start_time")
+    _validar_datetime(end_time, "end_time")
     loja_id = usuario["loja_id"]
     if not loja_id:
-        # admin sem loja fixa — usa o slug enviado pelo dashboard
+        # admin sem loja fixa â€” usa o slug enviado pelo dashboard
         if not loja:
-            raise HTTPException(status_code=403, detail="Informe o parâmetro loja")
+            raise HTTPException(status_code=403, detail="Informe o parÃ¢metro loja")
         row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
         if row is None:
-            raise HTTPException(status_code=404, detail="Loja não encontrada")
+            raise HTTPException(status_code=404, detail="Loja nÃ£o encontrada")
         loja_id = row["id"]
     if _purchase_video_path(loja_id, pdv, cupom).is_file():
         return {"status": "ready"}
@@ -798,6 +936,8 @@ def marcar_video_failed(
     loja: sqlite3.Row = Depends(autenticar_loja),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    cupom = _validar_safe_id(cupom, "Cupom")
+    pdv = _validar_pdv(pdv)
     db.execute(
         "UPDATE video_requests SET status = 'failed' WHERE loja_id = ? AND pdv = ? AND cupom = ?",
         (loja["id"], pdv, cupom),
@@ -811,11 +951,12 @@ def status_video_request(
     cupom: str = Query(...),
     pdv: str = Query(...),
     loja: str = Query(...),
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    row_loja = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
-    if row_loja is None:
-        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+    row_loja = _loja_por_slug_autorizada(loja, usuario, db)
+    cupom = _validar_safe_id(cupom, "Cupom")
+    pdv = _validar_pdv(pdv)
     row = db.execute(
         "SELECT status FROM video_requests WHERE loja_id = ? AND pdv = ? AND cupom = ?",
         (row_loja["id"], pdv, cupom),
@@ -833,11 +974,13 @@ def upload_video_cupom(
     loja: sqlite3.Row = Depends(autenticar_loja),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    cupom = _validar_safe_id(cupom, "Cupom")
+    pdv = _validar_pdv(pdv)
     if file is None:
         raise HTTPException(status_code=400, detail="Arquivo ausente")
     caminho = _purchase_video_path(loja["id"], pdv, cupom)
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.write_bytes(file.file.read())
+    caminho.write_bytes(_ler_upload(file, MAX_VIDEO_BYTES, {"video/mp4", "video/quicktime"}))
     db.execute(
         "UPDATE video_requests SET status = 'done' WHERE loja_id = ? AND pdv = ? AND cupom = ?",
         (loja["id"], pdv, cupom),
@@ -851,11 +994,10 @@ def obter_video_cupom(
     cupom: str = Query(...),
     pdv: str = Query(...),
     loja: str = Query(...),
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    row = db.execute("SELECT id FROM lojas WHERE slug = ?", (loja,)).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Loja nao encontrada")
+    row = _loja_por_slug_autorizada(loja, usuario, db)
     caminho = _purchase_video_path(row["id"], pdv, cupom)
     if not caminho.is_file():
         raise HTTPException(status_code=404, detail="Video nao encontrado")
@@ -863,13 +1005,17 @@ def obter_video_cupom(
 
 
 class DecisionIn(BaseModel):
-    action: str
+    action: str = Field(pattern=r"^(save|ignore)$")
 
 
 @app.post("/api/v1/alerts/{alerta_id}/decision")
-def decidir_alerta(alerta_id: int, decisao: DecisionIn, db: sqlite3.Connection = Depends(get_db)):
-    if decisao.action not in ("save", "ignore"):
-        raise HTTPException(status_code=400, detail="Acao invalida")
+def decidir_alerta(
+    alerta_id: int,
+    decisao: DecisionIn,
+    usuario: sqlite3.Row = Depends(autenticar_usuario),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    _evento_autorizado(alerta_id, usuario, db)
     novo_status = "resolved" if decisao.action == "save" else "ignored"
     cursor = db.execute(
         "UPDATE auditoria_eventos SET status = ? WHERE id = ?",
