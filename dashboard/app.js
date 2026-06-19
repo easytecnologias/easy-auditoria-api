@@ -1,6 +1,105 @@
 const LOJA = "loja-106";
 const REFRESH_INTERVAL_MS = 15000;
+const TOKEN_KEY = "ea_token";
 
+// ── Auth ──────────────────────────────────────────────
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+async function apiFetch(url, opts = {}) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const resp = await fetch(url, { ...opts, headers });
+  if (resp.status === 401) { mostrarLogin(); return resp; }
+  return resp;
+}
+
+function mostrarLogin() {
+  clearToken();
+  document.getElementById("loginScreen").hidden = false;
+  document.getElementById("appShell").hidden = true;
+}
+
+function mostrarApp(usuario) {
+  document.getElementById("loginScreen").hidden = true;
+  document.getElementById("appShell").hidden = false;
+  const iniciais = usuario.nome.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  const perfis = { admin: "Administrador", supervisor: "Supervisor", operador: "Operador" };
+  document.getElementById("profileAvatar").textContent = iniciais;
+  document.getElementById("profileName").textContent = usuario.nome;
+  document.getElementById("profileRole").textContent = perfis[usuario.perfil] || usuario.perfil;
+  if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
+    document.getElementById("navUsuarios").style.display = "";
+  }
+  if (usuario.perfil === "admin") {
+    document.getElementById("navPdvs").style.display = "";
+  }
+  lucide.createIcons();
+}
+
+async function verificarAuth() {
+  const token = getToken();
+  if (!token) { mostrarLogin(); return; }
+  try {
+    const resp = await fetch("/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) { mostrarLogin(); return; }
+    const usuario = await resp.json();
+    mostrarApp(usuario);
+    iniciarApp();
+  } catch {
+    mostrarLogin();
+  }
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("loginBtn");
+  const erro = document.getElementById("loginError");
+  btn.disabled = true;
+  btn.textContent = "Entrando...";
+  erro.hidden = true;
+  try {
+    const resp = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: document.getElementById("loginEmail").value,
+        senha: document.getElementById("loginPassword").value,
+      }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json();
+      erro.textContent = data.detail || "Email ou senha inválidos.";
+      erro.hidden = false;
+      return;
+    }
+    const { token, usuario } = await resp.json();
+    setToken(token);
+    mostrarApp(usuario);
+    iniciarApp();
+  } catch {
+    erro.textContent = "Erro de conexão. Tente novamente.";
+    erro.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Entrar";
+  }
+});
+
+document.getElementById("profileMenu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("profileDropdown").classList.toggle("open");
+});
+document.addEventListener("click", () => {
+  document.getElementById("profileDropdown").classList.remove("open");
+});
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  mostrarLogin();
+});
+
+// ── App ───────────────────────────────────────────────
 let alerts = [];
 let health = [];
 let activeFilter = "all";
@@ -13,13 +112,15 @@ let pdvsConhecidos = [];
 const table = document.getElementById("alertsTable");
 const drawer = document.getElementById("alertDrawer");
 const backdrop = document.getElementById("drawerBackdrop");
+const varDrawer = document.getElementById("varDrawer");
+const varBackdrop = document.getElementById("varDrawerBackdrop");
 const toast = document.getElementById("toast");
 
 async function carregarAlertas() {
   try {
     const params = new URLSearchParams({ loja: LOJA, filter: "all", data: selectedDate });
     if (!pdvFilterAll) selectedPdvs.forEach(pdv => params.append("pdv", pdv));
-    const resp = await fetch(`/api/v1/alerts?${params}`);
+    const resp = await apiFetch(`/api/v1/alerts?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     alerts = await resp.json();
   } catch (err) {
@@ -32,7 +133,7 @@ async function carregarAlertas() {
 
 async function carregarHealth() {
   try {
-    const resp = await fetch(`/api/v1/health?loja=${LOJA}`);
+    const resp = await apiFetch(`/api/v1/health?loja=${LOJA}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     health = await resp.json();
   } catch (err) {
@@ -145,7 +246,7 @@ async function carregarVendas() {
   try {
     const params = new URLSearchParams({ loja: LOJA, data: selectedDate });
     if (!pdvFilterAll) selectedPdvs.forEach(pdv => params.append("pdv", pdv));
-    const resp = await fetch(`/api/v1/sales?${params}`);
+    const resp = await apiFetch(`/api/v1/sales?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const vendas = await resp.json();
     document.getElementById("metricVendidoHoje").textContent =
@@ -181,7 +282,7 @@ function renderAlerts() {
       <td><span class="severity ${alert.severity}"><i></i>${alert.severity === "critical" ? "Crítico" : alert.severity === "warning" ? "Atenção" : "Normal"}</span></td>
       <td>${alert.time}</td>
       <td class="receipt-cell"><strong>${alert.pdv}</strong><span>Cupom ${alert.receipt}</span></td>
-      <td><div class="event-cell"><img class="mini-cctv" src="${alert.imageUrl}" onerror="this.src='assets/frame-register.svg'" alt=""><div><strong>${alert.event}</strong><span>${alert.subtitle}</span></div></div></td>
+      <td><div class="event-cell"><img class="mini-cctv" src="${alert.imageUrl || 'assets/frame-register.svg'}" ${alert.imageUrl ? `loading="lazy" onerror="this.src='assets/frame-register.svg';this.onerror=null"` : ''} alt=""><div><strong>${alert.event}</strong><span>${alert.subtitle}</span></div></div></td>
       <td class="product-cell"><strong>${alert.product}</strong><span>${alert.qty} · ${alert.value}</span></td>
       <td><div class="confidence"><span>${alert.confidence}%</span><i class="confidence-meter"><i style="width:${alert.confidence}%"></i></i></div></td>
       <td><span class="state-badge ${alert.state}">${alert.stateText}</span></td>
@@ -345,6 +446,18 @@ function closeDrawer() {
   drawer.setAttribute("aria-hidden", "true");
 }
 
+function openVarDrawer() {
+  varDrawer.classList.add("open");
+  varBackdrop.classList.add("open");
+  varDrawer.setAttribute("aria-hidden", "false");
+}
+
+function closeVarDrawer() {
+  varDrawer.classList.remove("open");
+  varBackdrop.classList.remove("open");
+  varDrawer.setAttribute("aria-hidden", "true");
+}
+
 function showToast(message) {
   toast.querySelector("span").textContent = message;
   toast.classList.add("show");
@@ -376,9 +489,8 @@ function resetVideo() {
 
 async function enviarDecisao(alertaId, action) {
   try {
-    await fetch(`/api/v1/alerts/${alertaId}/decision`, {
+    await apiFetch(`/api/v1/alerts/${alertaId}/decision`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
   } catch (err) {
@@ -425,12 +537,51 @@ document.getElementById("closeVideo").addEventListener("click", () => {
   document.getElementById("videoModal").classList.remove("open");
   resetVideo();
 });
-document.querySelector(".mobile-menu").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("open"));
+function _closeMobileSidebar() {
+  document.querySelector(".sidebar").classList.remove("open");
+  document.getElementById("mobileBackdrop")?.classList.remove("open");
+}
+function _openMobileSidebar() {
+  document.querySelector(".sidebar").classList.add("open");
+  document.getElementById("mobileBackdrop")?.classList.add("open");
+}
+document.querySelector(".mobile-menu").addEventListener("click", () => {
+  const isOpen = document.querySelector(".sidebar").classList.contains("open");
+  isOpen ? _closeMobileSidebar() : _openMobileSidebar();
+});
+document.getElementById("mobileBackdrop")?.addEventListener("click", _closeMobileSidebar);
+document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
+  toggle.addEventListener("click", () => {
+    toggle.closest(".nav-group").classList.toggle("open");
+  });
+});
+
+const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts"];
+
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.classList.remove("active"));
     item.classList.add("active");
-    if (item.dataset.view !== "overview") showToast("Tela incluída na próxima etapa do protótipo.");
+    _closeMobileSidebar(); // fecha menu no mobile ao navegar
+    const view = item.dataset.view;
+    const mainWorkspace = document.querySelector(".workspace:not([id])");
+    const isSubView = VIEWS.some(id => {
+      const el = document.getElementById(id);
+      const show = (id === "viewUsers" && view === "users") ||
+                   (id === "viewPdvs" && view === "pdvs") ||
+                   (id === "viewPdvCards" && view === "terminals") ||
+                   (id === "viewReceipts" && view === "receipts");
+      if (el) el.style.display = show ? "" : "none";
+      return show;
+    });
+    if (mainWorkspace) mainWorkspace.style.display = isSubView ? "none" : "";
+    if (view === "users") carregarUsuarios();
+    else if (view === "pdvs") carregarPdvs();
+    else if (view === "terminals") carregarCardsPdv();
+    else if (view === "receipts") iniciarViewCupons();
+    else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
+      showToast("Tela incluída na próxima etapa do protótipo.");
+    }
   });
 });
 
@@ -459,16 +610,1016 @@ document.getElementById("dateLabelButton").addEventListener("click", () => {
 });
 document.getElementById("dateInput").addEventListener("change", event => mudarData(event.target.value));
 
-atualizarRotuloData();
-carregarAlertas();
-carregarHealth();
-carregarVendas();
-lucide.createIcons();
+// ── Usuários ──────────────────────────────────────────
+let usuarioEditandoId = null;
+let usuarioSenhaId = null;
+const PERFIL_LABELS = { admin: "Administrador", supervisor: "Supervisor", operador: "Operador" };
 
-setInterval(() => {
-  if (isHoje(selectedDate)) carregarAlertas();
-}, REFRESH_INTERVAL_MS);
-setInterval(carregarHealth, REFRESH_INTERVAL_MS);
-setInterval(() => {
-  if (isHoje(selectedDate)) carregarVendas();
-}, REFRESH_INTERVAL_MS);
+async function carregarUsuarios() {
+  const resp = await apiFetch("/api/v1/usuarios");
+  if (!resp.ok) return;
+  const usuarios = await resp.json();
+  const tbody = document.getElementById("usuariosTable");
+  if (usuarios.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhum usuário cadastrado.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = usuarios.map(u => `
+    <tr>
+      <td><strong>${u.nome}</strong></td>
+      <td>${u.email}</td>
+      <td><span class="state-badge ${u.perfil === 'admin' ? 'resolved' : u.perfil === 'supervisor' ? 'review' : 'pending'}">${PERFIL_LABELS[u.perfil] || u.perfil}</span></td>
+      <td>${u.loja_id || '<span style="color:var(--muted)">Global</span>'}</td>
+      <td><span class="${u.ativo ? 'badge-ativo' : 'badge-inativo'}">${u.ativo ? 'Ativo' : 'Inativo'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button data-action="edit" data-id="${u.id}" title="Editar"><i data-lucide="pencil"></i></button>
+          <button data-action="senha" data-id="${u.id}" data-nome="${u.nome}" title="Trocar senha"><i data-lucide="key-round"></i></button>
+          <button data-action="toggle" data-id="${u.id}" data-ativo="${u.ativo}" title="${u.ativo ? 'Desativar' : 'Reativar'}"><i data-lucide="${u.ativo ? 'user-x' : 'user-check'}"></i></button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+  tbody.querySelectorAll("button[data-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = Number(btn.dataset.id);
+      const u = usuarios.find(x => x.id === id);
+      if (btn.dataset.action === "edit") abrirModalUsuario(u);
+      else if (btn.dataset.action === "senha") abrirModalSenha(id, btn.dataset.nome);
+      else if (btn.dataset.action === "toggle") toggleUsuario(id, btn.dataset.ativo === "1" || btn.dataset.ativo === "true");
+    });
+  });
+  lucide.createIcons();
+}
+
+function abrirModalUsuario(usuario = null) {
+  usuarioEditandoId = usuario ? usuario.id : null;
+  document.getElementById("modalUsuarioTitulo").textContent = usuario ? "Editar usuário" : "Novo usuário";
+  document.getElementById("uNome").value = usuario?.nome || "";
+  document.getElementById("uEmail").value = usuario?.email || "";
+  document.getElementById("uPerfil").value = usuario?.perfil || "";
+  document.getElementById("uLoja").value = usuario?.loja_id || "";
+  document.getElementById("uSenha").value = "";
+  document.getElementById("uSenhaLabel").style.display = usuario ? "none" : "flex";
+  document.getElementById("uSenha").required = !usuario;
+  document.getElementById("modalUsuarioErro").hidden = true;
+  document.getElementById("modalUsuario").style.display = "flex";
+  lucide.createIcons();
+}
+
+function fecharModalUsuario() {
+  document.getElementById("modalUsuario").style.display = "none";
+}
+
+function abrirModalSenha(id, nome) {
+  usuarioSenhaId = id;
+  document.getElementById("modalSenhaNome").textContent = `Usuário: ${nome}`;
+  document.getElementById("novaSenha").value = "";
+  document.getElementById("modalSenhaErro").hidden = true;
+  document.getElementById("modalSenha").style.display = "flex";
+}
+
+function fecharModalSenha() {
+  document.getElementById("modalSenha").style.display = "none";
+}
+
+async function toggleUsuario(id, ativo) {
+  const resp = await apiFetch(`/api/v1/usuarios/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ ativo: ativo ? 0 : 1 }),
+  });
+  if (resp.ok) { showToast(ativo ? "Usuário desativado." : "Usuário reativado."); carregarUsuarios(); }
+}
+
+document.getElementById("btnNovoUsuario").addEventListener("click", () => abrirModalUsuario());
+document.getElementById("closeModalUsuario").addEventListener("click", fecharModalUsuario);
+document.getElementById("cancelarModalUsuario").addEventListener("click", fecharModalUsuario);
+document.getElementById("closeModalSenha").addEventListener("click", fecharModalSenha);
+document.getElementById("cancelarModalSenha").addEventListener("click", fecharModalSenha);
+
+document.getElementById("formUsuario").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const erro = document.getElementById("modalUsuarioErro");
+  erro.hidden = true;
+  const body = {
+    nome: document.getElementById("uNome").value,
+    email: document.getElementById("uEmail").value,
+    perfil: document.getElementById("uPerfil").value,
+    loja_id: document.getElementById("uLoja").value || null,
+  };
+  if (!usuarioEditandoId) body.senha = document.getElementById("uSenha").value;
+
+  const resp = await apiFetch(
+    usuarioEditandoId ? `/api/v1/usuarios/${usuarioEditandoId}` : "/api/v1/usuarios",
+    { method: usuarioEditandoId ? "PUT" : "POST", body: JSON.stringify(body) }
+  );
+  if (!resp.ok) {
+    const data = await resp.json();
+    erro.textContent = data.detail || "Erro ao salvar.";
+    erro.hidden = false;
+    return;
+  }
+  fecharModalUsuario();
+  showToast(usuarioEditandoId ? "Usuário atualizado." : "Usuário criado.");
+  carregarUsuarios();
+});
+
+document.getElementById("formSenha").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const erro = document.getElementById("modalSenhaErro");
+  erro.hidden = true;
+  const resp = await apiFetch(`/api/v1/usuarios/${usuarioSenhaId}/senha`, {
+    method: "POST",
+    body: JSON.stringify({ nova_senha: document.getElementById("novaSenha").value }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json();
+    erro.textContent = data.detail || "Erro ao salvar.";
+    erro.hidden = false;
+    return;
+  }
+  fecharModalSenha();
+  showToast("Senha atualizada.");
+});
+
+// ── PDV Cards / VAR ───────────────────────────────────
+let varPdvSelecionado = null;
+let varHealthData = [];
+
+async function carregarCardsPdv() {
+  document.getElementById("pdvCardsGrid").style.display = "";
+  document.getElementById("pdvVarSearch").style.display = "none";
+  try {
+    const resp = await apiFetch(`/api/v1/health?loja=${LOJA}`);
+    if (!resp.ok) return;
+    varHealthData = await resp.json();
+  } catch { return; }
+
+  const container = document.getElementById("pdvCardsContainer");
+  if (varHealthData.length === 0) {
+    container.innerHTML = `<p style="color:var(--muted);font-size:13px">Nenhum PDV com dados de saúde ainda. Configure o bridge e aguarde o primeiro heartbeat.</p>`;
+    return;
+  }
+
+  const dot = s => `<span class="pdv-status-dot ${s === "online" ? "online" : s === "warning" ? "warning" : "offline"}"></span>`;
+  container.innerHTML = varHealthData.map(h => `
+    <div class="pdv-card" data-pdv="${h.pdv}">
+      <div class="pdv-card-name">PDV ${String(h.pdv).padStart(2,"0")}</div>
+      <div class="pdv-card-loja">Loja 106</div>
+      <div class="pdv-card-status">
+        <div class="pdv-status-row"><span>Bridge</span>${dot(h.bridge)}</div>
+        <div class="pdv-status-row"><span>iMHDX</span>${dot(h.imhdx)}</div>
+        <div class="pdv-status-row"><span>Auditoria</span>${dot(h.audit)}</div>
+      </div>
+      <div class="pdv-card-footer"><i data-lucide="search"></i> Consultar cupom</div>
+    </div>
+  `).join("");
+
+  container.querySelectorAll(".pdv-card").forEach(card => {
+    card.addEventListener("click", () => abrirVarSearch(card.dataset.pdv));
+  });
+  lucide.createIcons();
+}
+
+function abrirVarSearch(pdv) {
+  varPdvSelecionado = pdv;
+  document.getElementById("pdvCardsGrid").style.display = "none";
+  document.getElementById("pdvVarSearch").style.display = "";
+  document.getElementById("varBreadcrumb").textContent = `PDV ${String(pdv).padStart(2,"0")} · Loja 106`;
+  document.getElementById("varCupomInput").value = "";
+  document.getElementById("varItemInput").value = "";
+  lucide.createIcons();
+}
+
+document.getElementById("btnVoltarCards").addEventListener("click", () => {
+  closeVarDrawer();
+  document.getElementById("pdvCardsGrid").style.display = "";
+  document.getElementById("pdvVarSearch").style.display = "none";
+});
+
+document.querySelector('input[name="varTipo"]').addEventListener && document.querySelectorAll('input[name="varTipo"]').forEach(r => {
+  r.addEventListener("change", () => {
+    document.getElementById("varItemField").style.display =
+      document.querySelector('input[name="varTipo"]:checked').value === "item" ? "" : "none";
+  });
+});
+
+document.getElementById("closeVarResult").addEventListener("click", closeVarDrawer);
+varBackdrop.addEventListener("click", closeVarDrawer);
+
+let varResultLista = [];
+let varAbaAtiva = "fotos";
+let varTipoAtivo = "all";
+
+function renderVarBody() {
+  const body = document.getElementById("varResultModalBody");
+  if (varResultLista.length === 0) {
+    if (varAbaAtiva === "video" && varTipoAtivo === "all") {
+      // Sem eventos mas pode tentar gerar vídeo pelo spy file
+      // Renderiza normalmente a aba vídeo (com lista vazia)
+    } else {
+      body.innerHTML = `<div class="var-empty"><i data-lucide="search-x" style="width:32px;height:32px;margin-bottom:10px;color:var(--muted)"></i><br>Nenhum evento encontrado para este cupom.</div>`;
+      lucide.createIcons();
+      return;
+    }
+  }
+  if (varAbaAtiva === "fotos") {
+    body.innerHTML = varResultLista.map(a => `
+      <div class="var-event-card" data-id="${a.id}" style="cursor:pointer">
+        <div class="var-event-thumb">
+          <img src="${a.imageUrl || 'assets/frame-register.svg'}" ${a.imageUrl ? `onerror="this.src='assets/frame-register.svg';this.onerror=null"` : ''} alt="">
+        </div>
+        <div class="var-event-info">
+          <div class="var-event-top">
+            <span class="severity ${a.severity}"><i></i>${a.severity === "critical" ? "Crítico" : a.severity === "warning" ? "Atenção" : "Normal"}</span>
+            <span class="var-event-time">${a.time}</span>
+          </div>
+          <span class="var-event-product">${a.product}</span>
+          <span class="var-event-sub">${a.qty} · ${a.value}</span>
+          <p class="var-event-analysis">${a.analysis || ""}</p>
+        </div>
+        <div class="var-event-actions">
+          <button class="secondary-action" data-id="${a.id}"><i data-lucide="image"></i></button>
+        </div>
+      </div>
+    `).join("");
+    body.querySelectorAll(".var-event-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const alert = varResultLista.find(a => a.id === Number(card.dataset.id));
+        if (!alert) return;
+        closeVarDrawer();
+        openDrawer(alert);
+      });
+    });
+  } else if (varTipoAtivo === "all") {
+    const cupomNum = varResultLista[0]?.receipt || document.getElementById("varCupomInput").value.trim();
+    const pdvPad = String(varPdvSelecionado).padStart(3, "0");
+    const videoSrc = `/api/v1/cupom_video?cupom=${cupomNum}&pdv=${pdvPad}&loja=${LOJA}`;
+    const STREAMER_URL   = (window.APP_CONFIG || {}).STREAMER_URL   || "";
+    const TOKEN_STREAMER = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+    body.innerHTML = `
+      <div class="var-inline-player">
+        <video id="varVideoEl" controls style="display:none"></video>
+        <div id="varVideoStatus">
+          <div id="varVideoLoading" hidden style="text-align:center;padding:24px;color:var(--muted)">
+            <i data-lucide="loader-circle" style="width:32px;height:32px;animation:spin 1s linear infinite"></i>
+            <p style="margin-top:8px">Gerando vídeo… aguarde</p>
+          </div>
+          <div id="varVideoGerarBox" style="text-align:center;padding:24px">
+            <i data-lucide="video-off" style="width:32px;height:32px;color:var(--muted)"></i>
+            <p style="color:var(--muted);margin:8px 0 16px">Vídeo não disponível ainda</p>
+            <button id="btnGerarVideo" class="primary-action" style="gap:6px">
+              <i data-lucide="clapperboard"></i> Gerar vídeo da compra
+            </button>
+          </div>
+        </div>
+        <p class="var-video-label" id="varVideoLabel" hidden>Compra completa · cupom ${cupomNum}</p>
+      </div>
+      <div class="var-video-timeline" id="varVideoTimeline">
+        ${varResultLista.map((a, i) => `
+          <div class="var-timeline-item" data-ts="${a.timestamp || ''}" data-id="${a.id}">
+            <span class="var-timeline-time">${(a.time || '').slice(0,5)}</span>
+            <span class="var-timeline-product">${a.product || ''}</span>
+            <span class="var-timeline-qty">${a.qty || ''}</span>
+            <span class="var-timeline-price">${a.value || ''}</span>
+          </div>
+        `).join("")}
+      </div>`;
+
+    lucide.createIcons();
+
+    // ── Estado do player ──────────────────────────────────────────────────────
+    const videoEl   = document.getElementById("varVideoEl");
+    const gerarBox  = document.getElementById("varVideoGerarBox");
+    const loadingBox = document.getElementById("varVideoLoading");
+    const labelEl   = document.getElementById("varVideoLabel");
+
+    const WORKER_CAP_MS  = 300000;  // 5 min cap para arquivo gerado pelo worker
+    const POLL_TIMEOUT   = 120000;  // 2 min timeout no poll
+
+    let _videoStartEpoch = null;  // epoch do instante 0:00 do vídeo atual
+    let _lastCurrentRow  = null;
+    let _pollTimer       = null;
+    let _pollStart       = null;
+
+    // ── Cálculo da janela de vídeo ────────────────────────────────────────────
+    // capMs = 0 → sem cap (streaming); > 0 → centra e limita (worker/arquivo)
+    function _calcWindow(tss, capMs = 0) {
+      if (!tss.length) return null;
+      const toMs = s => new Date(s.replace(" ","T")).getTime();
+      let start = toMs(tss[0]) - 5000;
+      let end   = toMs(tss[tss.length - 1]) + 25000;
+      if (capMs > 0 && end - start > capMs) {
+        const mid = (start + end) / 2;
+        start = mid - capMs / 2;
+        end   = mid + capMs / 2;
+      }
+      return { startMs: start, endMs: end };
+    }
+
+    function _fmtLocal(ms) {
+      const d = new Date(ms), p = n => String(n).padStart(2,"0");
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }
+
+    // ── Sincronização timeline ↔ vídeo ────────────────────────────────────────
+    function _sincTimeline(currentSec) {
+      if (_videoStartEpoch === null) return;
+      const now = _videoStartEpoch + currentSec * 1000;
+      const tl  = document.getElementById("varVideoTimeline");
+      if (!tl) return;
+      let cur = null;
+      tl.querySelectorAll(".var-timeline-item").forEach(row => {
+        const ts = row.dataset.ts;
+        if (!ts) return;
+        const rowMs = new Date(ts.replace(" ","T")).getTime();
+        if (rowMs <= now) { row.classList.add("done"); row.classList.remove("current"); cur = row; }
+        else              { row.classList.remove("done","current"); }
+      });
+      if (cur) {
+        cur.classList.remove("done"); cur.classList.add("current");
+        if (cur !== _lastCurrentRow) {
+          _lastCurrentRow = cur;
+          cur.scrollIntoView({ behavior:"smooth", block:"start" });
+        }
+      }
+    }
+
+    // Registrar timeupdate UMA vez aqui (cobre probe + streaming + arquivo)
+    videoEl.addEventListener("timeupdate", () => _sincTimeline(videoEl.currentTime));
+
+    // ── Definir _videoStartEpoch ──────────────────────────────────────────────
+    function _definirStartEpoch(overrideMs) {
+      if (_videoStartEpoch !== null) return;
+      if (overrideMs != null) { _videoStartEpoch = overrideMs; return; }
+      // Tentar via varResultLista (eventos do banco)
+      const tss = varResultLista.map(a => a.timestamp || "").filter(Boolean).sort();
+      if (tss.length) {
+        const win = _calcWindow(tss);
+        if (win) { _videoStartEpoch = win.startMs; return; }
+      }
+      // Fallback: spy file (cupom sem eventos no banco)
+      fetch(`${STREAMER_URL}/cupom/${cupomNum}/info?token=${TOKEN_STREAMER}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.start_time) _videoStartEpoch = new Date(d.start_time.replace(" ","T")).getTime(); })
+        .catch(() => {});
+    }
+
+    // ── Exibir vídeo (arquivo salvo no servidor) ──────────────────────────────
+    function _mostrarVideoArquivo(src) {
+      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+      loadingBox.hidden = true; gerarBox.hidden = true;
+      videoEl.src = src; videoEl.style.display = ""; labelEl.hidden = false;
+      videoEl.addEventListener("loadedmetadata", () => _definirStartEpoch(), { once: true });
+      videoEl.load(); videoEl.play().catch(() => {});
+    }
+
+    // ── Mostrar falha ─────────────────────────────────────────────────────────
+    function _mostrarFalha(msg) {
+      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+      loadingBox.hidden = true; gerarBox.hidden = false;
+      gerarBox.querySelector("p").textContent = msg || "Sem gravação no DVR para este período.";
+      const btn = document.getElementById("btnGerarVideo");
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="video-off"></i> Sem gravação no DVR'; lucide.createIcons(); }
+    }
+
+    // ── Poll: aguardar worker gerar o arquivo ─────────────────────────────────
+    function _iniciarPoll() {
+      if (_pollTimer) clearInterval(_pollTimer);
+      _pollStart = Date.now();
+      _pollTimer = setInterval(async () => {
+        if (Date.now() - _pollStart > POLL_TIMEOUT) { _mostrarFalha("Tempo esgotado — sem gravação no DVR."); return; }
+        try {
+          const sr = await fetch(`/api/v1/cupom_video/status?cupom=${cupomNum}&pdv=${pdvPad}&loja=${LOJA}`);
+          if (sr.ok && (await sr.json()).status === "failed" && Date.now() - _pollStart > 3000) {
+            _mostrarFalha("DVR sem gravação para este período."); return;
+          }
+          const r = await fetch(videoSrc);
+          if (r.ok) { clearInterval(_pollTimer); _pollTimer = null; _mostrarVideoArquivo(videoSrc + "&t=" + Date.now()); }
+        } catch {}
+      }, 4000);
+    }
+
+    // ── Método antigo: worker gera e sobe o arquivo ───────────────────────────
+    async function _usarMetodoAntigo(win) {
+      try {
+        const params = new URLSearchParams({ cupom: cupomNum, pdv: pdvPad, start_time: win.start_time, end_time: win.end_time, loja: LOJA });
+        const r = await apiFetch(`/api/v1/cupom_video/request?${params}`, { method: "POST" });
+        if (!r.ok) { loadingBox.hidden = true; gerarBox.hidden = false; return; }
+        const data = await r.json();
+        if (data.status === "ready") _mostrarVideoArquivo(videoSrc);
+        else _iniciarPoll();
+      } catch { loadingBox.hidden = true; gerarBox.hidden = false; }
+    }
+
+    // ── Probe: verificar se existe vídeo via status endpoint (sem 404 no console) ──
+    const statusUrl = `/api/v1/cupom_video/status?cupom=${cupomNum}&pdv=${pdvPad}&loja=${LOJA}`;
+    fetch(statusUrl).then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.status === "done") _mostrarVideoArquivo(videoSrc);
+    }).catch(() => {});
+
+    // ── Buscar itens do spy file (cupom sem eventos no banco) ─────────────────
+    if (varResultLista.length === 0) {
+      fetch(`${STREAMER_URL}/cupom/${cupomNum}/items?token=${TOKEN_STREAMER}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data?.itens?.length) return;
+          const tl = document.getElementById("varVideoTimeline");
+          if (!tl) return;
+          tl.innerHTML = data.itens.map(it => {
+            const q = it.qty;
+            const qtyStr = (q % 1 === 0) ? `${q.toFixed(0)}x` : `${q.toFixed(3).replace(".",",")} kg`;
+            return `
+            <div class="var-timeline-item" data-ts="${it.timestamp}">
+              <span class="var-timeline-time">${it.time.slice(0,5)}</span>
+              <span class="var-timeline-product">${it.desc}</span>
+              <span class="var-timeline-qty">${qtyStr}</span>
+              <span class="var-timeline-price">R$ ${it.value.toFixed(2).replace(".",",")}</span>
+            </div>`;
+          }).join("");
+        }).catch(() => {});
+    }
+
+    // ── Botão Gerar vídeo ─────────────────────────────────────────────────────
+    document.getElementById("btnGerarVideo").addEventListener("click", async () => {
+      gerarBox.hidden = true; loadingBox.hidden = false;
+
+      const semEventos = varResultLista.length === 0;
+      const tss = varResultLista.map(a => a.timestamp || "").filter(Boolean).sort();
+      const win        = _calcWindow(tss);
+      const winCapped  = _calcWindow(tss, WORKER_CAP_MS);
+
+      // Montar URL do streamer
+      let streamSrc;
+      if (semEventos) {
+        // Para cupom sem eventos: usar /info como probe para obter start_time real
+        // antes de iniciar o stream (evita 200 OK seguido de silêncio)
+        try {
+          const infoR = await fetch(`${STREAMER_URL}/cupom/${cupomNum}/info?token=${TOKEN_STREAMER}`);
+          if (infoR.status === 425) {
+            loadingBox.hidden = true; gerarBox.hidden = false;
+            gerarBox.querySelector("p").textContent = "Gravação disponível em ~2 minutos (DVR ainda gravando).";
+            const btn = document.getElementById("btnGerarVideo");
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="clock"></i> Tentar em 2 min'; lucide.createIcons(); }
+            return;
+          }
+          if (!infoR.ok) {
+            loadingBox.hidden = true; gerarBox.hidden = false;
+            gerarBox.querySelector("p").textContent = "Sem gravação no DVR para este período.";
+            return;
+          }
+          const info = await infoR.json();
+          _videoStartEpoch = new Date(info.start_time.replace(" ","T")).getTime();
+          const sp = new URLSearchParams({ start: info.start_time, end: info.end_time, token: TOKEN_STREAMER, skip_dhav: "1" });
+          streamSrc = `${STREAMER_URL}/?${sp}`;
+        } catch {
+          loadingBox.hidden = true; gerarBox.hidden = false; return;
+        }
+      } else if (win) {
+        // Probe: descobre o start_time real após ajuste DHAV
+        try {
+          const probeParams = new URLSearchParams({ start: _fmtLocal(win.startMs), end: _fmtLocal(win.endMs), token: TOKEN_STREAMER });
+          const pr = await fetch(`${STREAMER_URL}/probe?${probeParams}`);
+          if (pr.status === 425) {
+            // Compra muito recente — DVR ainda gravando
+            loadingBox.hidden = true; gerarBox.hidden = false;
+            gerarBox.querySelector("p").textContent = "Gravação disponível em ~2 minutos (DVR ainda gravando).";
+            const btn = document.getElementById("btnGerarVideo");
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="clock"></i> Tentar em 2 min'; lucide.createIcons(); }
+            return;
+          }
+          if (!pr.ok) { loadingBox.hidden = true; gerarBox.hidden = false; return; }
+          const pd = await pr.json();
+          _videoStartEpoch = new Date(pd.start_time.replace(" ","T")).getTime();
+          streamSrc = `${STREAMER_URL}/?${new URLSearchParams({ start: pd.start_time, end: pd.end_time, token: TOKEN_STREAMER, skip_dhav: "1" })}`;
+        } catch { loadingBox.hidden = true; gerarBox.hidden = false; return; }
+      } else {
+        loadingBox.hidden = true; gerarBox.hidden = false; return;
+      }
+
+      // Timer começa AQUI (após /info ou /probe já terem verificado DHAV)
+      // Cobre: stream startup + ffmpeg first fragment + margem de segurança
+      const fallbackTimer = setTimeout(() => {
+        videoEl.removeEventListener("loadedmetadata", onOk);
+        videoEl.removeEventListener("error", onErr);
+        videoEl.src = "";
+        (semEventos || !winCapped) ? _mostrarFalha("Tempo esgotado — tente novamente.") : _usarMetodoAntigo({ start_time: _fmtLocal(winCapped.startMs), end_time: _fmtLocal(winCapped.endMs) });
+      }, 40000);
+
+      function onOk() {
+        clearTimeout(fallbackTimer); videoEl.removeEventListener("error", onErr);
+        loadingBox.hidden = true; videoEl.style.display = ""; videoEl.play().catch(() => {}); labelEl.hidden = false;
+        if (semEventos) _definirStartEpoch();
+      }
+      function onErr() {
+        clearTimeout(fallbackTimer); videoEl.removeEventListener("loadedmetadata", onOk);
+        videoEl.src = "";
+        if (!semEventos && winCapped) {
+          _usarMetodoAntigo({ start_time: _fmtLocal(winCapped.startMs), end_time: _fmtLocal(winCapped.endMs) });
+        } else {
+          loadingBox.hidden = true; gerarBox.hidden = false;
+          const btn = document.getElementById("btnGerarVideo");
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="rotate-ccw"></i> Tentar novamente'; lucide.createIcons(); }
+        }
+      }
+
+      videoEl.addEventListener("loadedmetadata", onOk, { once: true });
+      videoEl.addEventListener("error", onErr, { once: true });
+      videoEl.src = streamSrc; videoEl.load();
+    });
+
+    // ── Click em item da timeline → seek ──────────────────────────────────────
+    body.querySelectorAll(".var-timeline-item").forEach(row => {
+      row.style.cursor = "pointer";
+      row.addEventListener("click", () => {
+        const ts = row.dataset.ts;
+        if (!ts || _videoStartEpoch === null || videoEl.style.display === "none") return;
+        if (!videoEl.seekable?.length) return;  // live stream: sem seek
+        const seekTo = (new Date(ts.replace(" ","T")).getTime() - _videoStartEpoch) / 1000;
+        if (seekTo >= 0 && seekTo < videoEl.duration) { videoEl.currentTime = seekTo; videoEl.play().catch(() => {}); }
+      });
+    });
+    return; // lucide already called above
+  } else {
+    body.innerHTML = varResultLista.map(a => `
+      <div class="var-event-card" data-id="${a.id}" style="cursor:pointer">
+        <div class="var-event-thumb" style="display:flex;align-items:center;justify-content:center;background:#15282f">
+          <i data-lucide="play-circle" style="width:32px;height:32px;color:#fff"></i>
+        </div>
+        <div class="var-event-info">
+          <div class="var-event-top">
+            <span class="severity ${a.severity}"><i></i>${a.severity === "critical" ? "Crítico" : a.severity === "warning" ? "Atenção" : "Normal"}</span>
+            <span class="var-event-time">${a.time}</span>
+          </div>
+          <span class="var-event-product">${a.product}</span>
+          <span class="var-event-sub">${a.qty} · ${a.value}</span>
+        </div>
+        <div class="var-event-actions">
+          <button class="secondary-action" data-id="${a.id}"><i data-lucide="play"></i></button>
+        </div>
+      </div>
+    `).join("");
+    body.querySelectorAll(".var-event-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const alert = varResultLista.find(a => a.id === Number(card.dataset.id));
+        if (!alert) return;
+        closeVarDrawer();
+        openDrawer(alert);
+        openVideo();
+      });
+    });
+  }
+  lucide.createIcons();
+}
+
+document.querySelectorAll(".var-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".var-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    varAbaAtiva = tab.dataset.tab;
+    renderVarBody();
+  });
+});
+
+document.getElementById("formVarCupom").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cupom = document.getElementById("varCupomInput").value.trim();
+  if (!cupom || !varPdvSelecionado) return;
+  const tipo = document.querySelector('input[name="varTipo"]:checked').value;
+  const itemFiltro = tipo === "item" ? document.getElementById("varItemInput").value.trim().toLowerCase() : "";
+
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true;
+  const params = new URLSearchParams({ loja: LOJA, cupom });
+  params.append("pdv", varPdvSelecionado);
+  const resp = await apiFetch(`/api/v1/alerts?${params}`);
+  btn.disabled = false;
+  if (!resp.ok) return;
+  let lista = await resp.json();
+
+  if (itemFiltro) lista = lista.filter(a => a.product.toLowerCase().includes(itemFiltro));
+  varResultLista = lista;
+  varTipoAtivo = tipo;
+
+  document.getElementById("varResultModalBreadcrumb").textContent =
+    `PDV ${String(varPdvSelecionado).padStart(2,"0")} · Loja 106`;
+  document.getElementById("varResultModalTitle").textContent =
+    `Cupom ${cupom}` + (lista.length ? ` — ${lista.length} evento${lista.length !== 1 ? "s" : ""}` : "");
+
+  varAbaAtiva = "fotos";
+  document.querySelectorAll(".var-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "fotos"));
+  renderVarBody();
+  openVarDrawer();
+});
+
+// ── PDVs ──────────────────────────────────────────────
+// ── View Cupons ───────────────────────────────────────────────────────────────
+const STREAMER_BASE  = (window.APP_CONFIG || {}).STREAMER_URL   || "";
+const STREAMER_TOKEN = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+
+let _cuponsTodos = [];  // cache para filtro local
+
+function iniciarViewCupons() {
+  const pad = n => String(n).padStart(2,"0");
+  const hoje = new Date();
+  const todayStr = `${hoje.getFullYear()}-${pad(hoje.getMonth()+1)}-${pad(hoje.getDate())}`;
+  const input = document.getElementById("cuponsDateInput");
+  if (!input.value) input.value = todayStr;
+  // Marcar botão "Hoje" como ativo
+  document.querySelectorAll(".cupons-quick").forEach(b => b.classList.toggle("active", b.dataset.days === "0"));
+  carregarCupons(input.value);
+}
+
+function _aplicarFiltrosCupons() {
+  const busca   = (document.getElementById("cuponsSearch")?.value || "").toLowerCase();
+  const op      = document.getElementById("cuponsOperadorFilter")?.value || "";
+  const periodo = document.getElementById("cuponsPeriodoFilter")?.value || "";
+  const PERIODOS = { manha: [6,12], tarde: [12,18], noite: [18,23] };
+
+  let lista = _cuponsTodos.filter(c => {
+    if (op && c.operador !== op) return false;
+    if (busca && !c.numero.includes(busca) && !(c.operador||"").toLowerCase().includes(busca)) return false;
+    if (periodo && PERIODOS[periodo]) {
+      const h = parseInt((c.abriu || "00").slice(0,2));
+      const [min, max] = PERIODOS[periodo];
+      if (h < min || h >= max) return false;
+    }
+    return true;
+  });
+
+  const tbody = document.getElementById("cuponsTableBody");
+  const footer = document.getElementById("cuponsFooter");
+  if (!lista.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhum cupom encontrado com esses filtros.</td></tr>`;
+    footer.textContent = "0 cupons";
+    return;
+  }
+  const total = lista.reduce((s, c) => s + (c.total || 0), 0);
+  tbody.innerHTML = lista.map(c => `
+    <tr data-cupom="${c.numero}">
+      <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
+      <td><strong>${c.numero}</strong></td>
+      <td class="cupons-op">${c.operador || '—'}</td>
+      <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
+      <td style="text-align:right;font-weight:600">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
+      <td>
+        <div style="display:flex;justify-content:flex-end;gap:4px">
+          <button class="icon-button cupom-btn-nota" data-cupom="${c.numero}" title="Ver cupom"><i data-lucide="file-text" style="width:16px;height:16px"></i></button>
+          <button class="icon-button cupom-btn-video" data-cupom="${c.numero}" title="Ver vídeo"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button>
+        </div>
+      </td>
+    </tr>`).join("");
+  footer.textContent = `${lista.length} de ${_cuponsTodos.length} cupons · Total R$ ${total.toFixed(2).replace(".",",")}`;
+  lucide.createIcons();
+
+  tbody.querySelectorAll(".cupom-btn-nota").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); abrirCupomDrawer(btn.dataset.cupom); });
+  });
+  tbody.querySelectorAll(".cupom-btn-video").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const num = btn.dataset.cupom;
+      varPdvSelecionado = 1;
+      document.getElementById("viewReceipts").style.display = "none";
+      document.getElementById("viewPdvCards").style.display = "";
+      document.getElementById("pdvCardsGrid").style.display = "none";
+      document.getElementById("pdvVarSearch").style.display = "";
+      document.getElementById("varCupomInput").value = num;
+      document.querySelector('input[name="varTipo"][value="all"]').checked = true;
+      document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
+      document.querySelectorAll(".nav-item[data-view='terminals']").forEach(n => n.classList.add("active"));
+      document.getElementById("formVarCupom").dispatchEvent(new Event("submit"));
+    });
+  });
+}
+
+async function carregarCupons(dateStr) {
+  _cuponsTodos = [];
+  const tbody = document.getElementById("cuponsTableBody");
+  tbody.innerHTML = `<tr class="empty-row"><td colspan="6"><i data-lucide="loader-circle" style="width:16px;animation:spin 1s linear infinite"></i> Carregando…</td></tr>`;
+  lucide.createIcons();
+  try {
+    const r = await fetch(`${STREAMER_BASE}/cupons?date=${dateStr}&token=${STREAMER_TOKEN}`);
+    if (!r.ok) { tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Erro ao carregar cupons.</td></tr>`; return; }
+    const data = await r.json();
+    _cuponsTodos = (data.cupons || []).filter(c => c.fechou).reverse();
+
+    // Preencher filtro de operadores
+    const ops = [...new Set(_cuponsTodos.map(c => c.operador).filter(Boolean))].sort();
+    const sel = document.getElementById("cuponsOperadorFilter");
+    if (sel) {
+      const current = sel.value;
+      sel.innerHTML = `<option value="">Todos os operadores</option>` +
+        ops.map(o => `<option value="${o}"${o===current?' selected':''}>${o}</option>`).join("");
+    }
+    _aplicarFiltrosCupons();
+  } catch(e) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Erro de conexão com o PDV.</td></tr>`;
+  }
+}
+
+// Botões de data rápida
+document.querySelectorAll(".cupons-quick").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const d = new Date();
+    d.setDate(d.getDate() - parseInt(btn.dataset.days));
+    const pad = n => String(n).padStart(2,"0");
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    document.getElementById("cuponsDateInput").value = dateStr;
+    document.querySelectorAll(".cupons-quick").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    carregarCupons(dateStr);
+  });
+});
+document.getElementById("btnCarregarCupons")?.addEventListener("click", () => {
+  const d = document.getElementById("cuponsDateInput").value;
+  if (d) carregarCupons(d);
+});
+document.getElementById("cuponsDateInput")?.addEventListener("change", e => {
+  document.querySelectorAll(".cupons-quick").forEach(b => b.classList.remove("active"));
+  carregarCupons(e.target.value);
+});
+document.getElementById("cuponsSearch")?.addEventListener("input", _aplicarFiltrosCupons);
+document.getElementById("cuponsOperadorFilter")?.addEventListener("change", _aplicarFiltrosCupons);
+document.getElementById("cuponsPeriodoFilter")?.addEventListener("change", _aplicarFiltrosCupons);
+
+// ── Receipt Drawer ────────────────────────────────────────────────────────────
+function openReceiptDrawer() {
+  document.getElementById("receiptDrawer").classList.add("open");
+  document.getElementById("receiptDrawer").setAttribute("aria-hidden","false");
+  document.getElementById("receiptDrawerBackdrop").classList.add("open");
+}
+function closeReceiptDrawer() {
+  document.getElementById("receiptDrawer").classList.remove("open");
+  document.getElementById("receiptDrawer").setAttribute("aria-hidden","true");
+  document.getElementById("receiptDrawerBackdrop").classList.remove("open");
+}
+document.getElementById("closeReceiptDrawer")?.addEventListener("click", closeReceiptDrawer);
+document.getElementById("receiptDrawerBackdrop")?.addEventListener("click", closeReceiptDrawer);
+
+async function abrirCupomDrawer(cupomNum) {
+  document.getElementById("receiptDrawerTitle").textContent = `Cupom ${cupomNum}`;
+  document.getElementById("receiptDrawerBody").innerHTML =
+    `<div style="padding:32px;text-align:center;color:var(--muted)"><i data-lucide="loader-circle" style="width:24px;animation:spin 1s linear infinite"></i></div>`;
+  lucide.createIcons();
+  openReceiptDrawer();
+
+  try {
+    const r = await fetch(`${STREAMER_BASE}/cupom/${cupomNum}/receipt?token=${STREAMER_TOKEN}`);
+    if (!r.ok) {
+      document.getElementById("receiptDrawerBody").innerHTML = `<p style="padding:24px;color:var(--muted)">Cupom não encontrado no spy file.</p>`;
+      return;
+    }
+    const d = await r.json();
+    document.getElementById("receiptDrawerEyebrow").textContent = `${d.data} · ${d.operador || '—'}`;
+    document.getElementById("receiptDrawerTitle").textContent = `Cupom ${d.numero}`;
+
+    const fmtVal = v => `R$ ${(v||0).toFixed(2).replace(".",",")}`;
+    const itensHTML = (d.itens || []).map(it => `
+      <tr>
+        <td style="padding:6px 8px">${it.time.slice(0,5)}</td>
+        <td style="padding:6px 8px">${it.desc}</td>
+        <td style="padding:6px 8px;text-align:center">${it.qty % 1 === 0 ? it.qty.toFixed(0)+'x' : it.qty.toFixed(3).replace(".",",")}</td>
+        <td style="padding:6px 8px;text-align:right">${fmtVal(it.vunit)}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:600">${fmtVal(it.vtotal)}</td>
+      </tr>`).join("");
+
+    const pagHTML = (d.pagamentos || []).map(p => `
+      <div style="display:flex;justify-content:space-between;padding:4px 0">
+        <span>${p.forma}</span><strong>${fmtVal(p.valor)}</strong>
+      </div>`).join("");
+
+    document.getElementById("receiptDrawerBody").innerHTML = `
+      <div id="printArea" style="padding:4px 0">
+        <div style="background:var(--bg);border-radius:8px;padding:14px 16px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
+            <span>Abertura: ${d.abriu}</span><span>Fechamento: ${d.fechou || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Operador: ${d.operador || '—'}</div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600">Hr</th>
+              <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600">Produto</th>
+              <th style="padding:6px 8px;text-align:center;color:var(--muted);font-weight:600">Qtd</th>
+              <th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:600">Unit</th>
+              <th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:600">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itensHTML}</tbody>
+        </table>
+
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+            <span style="color:var(--muted)">Subtotal</span><span>${fmtVal(d.subtotal || d.total)}</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${pagHTML}</div>
+          <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;border-top:2px solid var(--border);padding-top:10px">
+            <span>Total</span><span style="color:var(--primary)">${fmtVal(d.total)}</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <button id="btnVerVideoFromReceipt" class="primary-action" style="width:100%;gap:8px"
+            data-cupom="${d.numero}">
+            <i data-lucide="play-circle"></i> Ver vídeo da compra
+          </button>
+        </div>
+      </div>`;
+    lucide.createIcons();
+    document.getElementById("btnVerVideoFromReceipt")?.addEventListener("click", () => {
+      const num = document.getElementById("btnVerVideoFromReceipt").dataset.cupom;
+      closeReceiptDrawer();
+      // Navegar para VAR com esse cupom
+      varPdvSelecionado = 1;
+      document.getElementById("viewReceipts").style.display = "none";
+      document.getElementById("viewPdvCards").style.display = "";
+      document.getElementById("pdvCardsGrid").style.display = "none";
+      document.getElementById("pdvVarSearch").style.display = "";
+      document.getElementById("varCupomInput").value = num;
+      document.querySelector('input[name="varTipo"][value="all"]').checked = true;
+      document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
+      document.querySelectorAll(".nav-item[data-view='terminals']").forEach(n => n.classList.add("active"));
+      document.getElementById("formVarCupom").dispatchEvent(new Event("submit"));
+    });
+  } catch(e) {
+    document.getElementById("receiptDrawerBody").innerHTML = `<p style="padding:24px;color:var(--muted)">Erro ao carregar cupom.</p>`;
+  }
+}
+
+document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
+  const area = document.getElementById("printArea");
+  if (!area) return;
+  const title = document.getElementById("receiptDrawerTitle").textContent;
+  const eyebrow = document.getElementById("receiptDrawerEyebrow").textContent;
+  const w = window.open("", "_blank", "width=400,height=600");
+  w.document.write(`
+    <html><head><title>${title}</title>
+    <style>
+      body { font-family: monospace; font-size: 12px; margin: 16px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 4px 6px; }
+      th { border-bottom: 1px solid #000; text-align: left; }
+      .right { text-align: right; }
+      .center { text-align: center; }
+      .total { font-size: 16px; font-weight: bold; border-top: 2px solid #000; padding-top: 8px; margin-top: 8px; }
+      h3 { margin: 0 0 4px; }
+      .sub { color: #666; font-size: 11px; }
+    </style></head><body>
+    <h3>${title}</h3>
+    <div class="sub">${eyebrow}</div>
+    <hr>
+    ${area.innerHTML}
+    </body></html>`);
+  w.document.close();
+  w.print();
+});
+
+// ── PDVs ───────────────────────────────────────────────────────────────────────
+let pdvEditandoId = null;
+
+async function carregarPdvs() {
+  const resp = await apiFetch("/api/v1/lojas");
+  if (!resp.ok) return;
+  const lojas = await resp.json();
+  const tbody = document.getElementById("pdvsTable");
+  if (lojas.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">Nenhum PDV cadastrado.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lojas.map(l => {
+    const mask = `****${l.api_token.slice(-8)}`;
+    const data = (l.criado_em || "").slice(0, 10);
+    return `
+    <tr>
+      <td><strong>${l.pdv_nome || l.id}</strong></td>
+      <td>${l.nome}</td>
+      <td>
+        <div class="token-cell">
+          <code class="token-code">${mask}</code>
+          <button class="icon-button" data-action="copy" data-token="${l.api_token}" title="Copiar token completo"><i data-lucide="copy"></i></button>
+          <button class="icon-button" data-action="regen" data-id="${l.id}" title="Regenerar token"><i data-lucide="refresh-cw"></i></button>
+        </div>
+      </td>
+      <td>${data}</td>
+      <td>
+        <div class="row-actions">
+          <button data-action="edit" data-id="${l.id}" data-nome="${l.nome}" data-pdvnome="${l.pdv_nome || ''}" title="Editar"><i data-lucide="pencil"></i></button>
+          <button data-action="delete" data-id="${l.id}" data-nome="${l.nome}" title="Excluir"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("button[data-action]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.action;
+      if (action === "copy") {
+        await navigator.clipboard.writeText(btn.dataset.token);
+        showToast("Token copiado!");
+      } else if (action === "regen") {
+        if (!confirm(`Regenerar token de "${btn.dataset.id}"?\nO bridge atual vai parar de funcionar até ser atualizado.`)) return;
+        const resp = await apiFetch(`/api/v1/lojas/${btn.dataset.id}/token`, { method: "POST" });
+        if (resp.ok) {
+          const data = await resp.json();
+          mostrarTokenRevelado(data.api_token);
+          carregarPdvs();
+        }
+      } else if (action === "edit") {
+        abrirModalPdv({ id: btn.dataset.id, nome: btn.dataset.nome, pdv_nome: btn.dataset.pdvnome });
+      } else if (action === "delete") {
+        if (!confirm(`Excluir PDV "${btn.dataset.nome}"?\nEsta ação não pode ser desfeita.`)) return;
+        const resp = await apiFetch(`/api/v1/lojas/${btn.dataset.id}`, { method: "DELETE" });
+        if (!resp.ok) {
+          const data = await resp.json();
+          showToast(data.detail || "Erro ao excluir.");
+        } else {
+          showToast("PDV excluído.");
+          carregarPdvs();
+        }
+      }
+    });
+  });
+  lucide.createIcons();
+}
+
+function mostrarTokenRevelado(token) {
+  document.getElementById("tokenRevelado").textContent = token;
+  document.getElementById("modalToken").style.display = "flex";
+  lucide.createIcons();
+}
+
+function abrirModalPdv(pdv = null) {
+  pdvEditandoId = pdv ? pdv.id : null;
+  document.getElementById("modalPdvTitulo").textContent = pdv ? "Editar PDV" : "Novo PDV";
+  document.getElementById("pPdvNome").value = pdv?.pdv_nome || "";
+  document.getElementById("pNome").value = pdv?.nome || "";
+  document.getElementById("pId").value = pdv?.id || "";
+  const idLabel = document.getElementById("pIdLabel");
+  idLabel.style.display = pdv ? "none" : "flex";
+  document.getElementById("pId").required = !pdv;
+  document.getElementById("modalPdvErro").hidden = true;
+  document.getElementById("modalPdv").style.display = "flex";
+  lucide.createIcons();
+}
+
+function fecharModalPdv() { document.getElementById("modalPdv").style.display = "none"; }
+
+document.getElementById("btnNovoPdv").addEventListener("click", () => abrirModalPdv());
+document.getElementById("closeModalPdv").addEventListener("click", fecharModalPdv);
+document.getElementById("cancelarModalPdv").addEventListener("click", fecharModalPdv);
+document.getElementById("closeModalToken").addEventListener("click", () => {
+  document.getElementById("modalToken").style.display = "none";
+});
+document.getElementById("btnCopiarTokenRevelado").addEventListener("click", async () => {
+  const token = document.getElementById("tokenRevelado").textContent;
+  await navigator.clipboard.writeText(token);
+  showToast("Token copiado!");
+});
+
+document.getElementById("formPdv").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const erro = document.getElementById("modalPdvErro");
+  erro.hidden = true;
+  const isNovo = !pdvEditandoId;
+  const body = isNovo
+    ? { id: document.getElementById("pId").value, nome: document.getElementById("pNome").value, pdv_nome: document.getElementById("pPdvNome").value }
+    : { nome: document.getElementById("pNome").value, pdv_nome: document.getElementById("pPdvNome").value };
+  const resp = await apiFetch(
+    isNovo ? "/api/v1/lojas" : `/api/v1/lojas/${pdvEditandoId}`,
+    { method: isNovo ? "POST" : "PUT", body: JSON.stringify(body) }
+  );
+  if (!resp.ok) {
+    const data = await resp.json();
+    erro.textContent = data.detail || "Erro ao salvar.";
+    erro.hidden = false;
+    return;
+  }
+  fecharModalPdv();
+  if (isNovo) {
+    const data = await resp.json();
+    mostrarTokenRevelado(data.api_token);
+  } else {
+    showToast("PDV atualizado.");
+  }
+  carregarPdvs();
+});
+
+function iniciarApp() {
+  atualizarRotuloData();
+  carregarAlertas();
+  carregarHealth();
+  carregarVendas();
+
+  setInterval(() => {
+    if (isHoje(selectedDate)) carregarAlertas();
+  }, REFRESH_INTERVAL_MS);
+  setInterval(carregarHealth, REFRESH_INTERVAL_MS);
+  setInterval(() => {
+    if (isHoje(selectedDate)) carregarVendas();
+  }, REFRESH_INTERVAL_MS);
+}
+
+verificarAuth();

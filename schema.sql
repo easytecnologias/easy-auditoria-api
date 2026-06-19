@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS lojas (
     id TEXT PRIMARY KEY,
     slug TEXT UNIQUE NOT NULL,
     nome TEXT NOT NULL,
+    pdv_nome TEXT,
     api_token TEXT NOT NULL,
     criado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -50,4 +51,26 @@ CREATE TABLE IF NOT EXISTS pdv_sales (
     cupons INTEGER NOT NULL DEFAULT 0,
     atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (loja_id, pdv, data)
+);
+
+CREATE TABLE IF NOT EXISTS video_requests (
+    loja_id TEXT NOT NULL,
+    pdv TEXT NOT NULL,
+    cupom TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (loja_id, pdv, cupom)
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    perfil TEXT NOT NULL CHECK (perfil IN ('admin', 'supervisor', 'operador')),
+    loja_id TEXT REFERENCES lojas(id),
+    ativo INTEGER NOT NULL DEFAULT 1,
+    criado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );

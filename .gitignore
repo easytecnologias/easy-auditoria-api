@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 *.db
+# Configuração local com credenciais reais (não commitar)
+dashboard/config.js
+# Dados de produção
+data/
+purchase_videos/

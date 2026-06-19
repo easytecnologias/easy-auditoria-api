@@ -23,7 +23,32 @@
   </style>
 </head>
 <body>
-  <div class="app-shell">
+
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">E</div>
+        <div>
+          <strong>Easy Auditoria</strong>
+          <span>Central de PDVs</span>
+        </div>
+      </div>
+      <h2>Entrar</h2>
+      <p id="loginError" class="login-error" hidden></p>
+      <form id="loginForm">
+        <label>E-mail
+          <input id="loginEmail" type="email" autocomplete="username" placeholder="seu@email.com" required>
+        </label>
+        <label>Senha
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </label>
+        <button type="submit" id="loginBtn">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="appShell" class="app-shell" hidden>
+    <div id="mobileBackdrop" class="mobile-backdrop"></div>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">E</div>
@@ -35,18 +60,49 @@
 
       <nav class="nav-list" aria-label="Navegação principal">
         <button class="nav-item active" data-view="overview"><i data-lucide="layout-dashboard"></i><span>Visão geral</span></button>
-        <button class="nav-item" data-view="alerts"><i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b></button>
-        <button class="nav-item" data-view="occurrences"><i data-lucide="bookmark-check"></i><span>Ocorrências</span></button>
-        <button class="nav-item" data-view="receipts"><i data-lucide="receipt-text"></i><span>Cupons</span></button>
-        <button class="nav-item" data-view="terminals"><i data-lucide="monitor-dot"></i><span>PDVs</span></button>
-        <button class="nav-item" data-view="reports"><i data-lucide="chart-no-axes-combined"></i><span>Relatórios</span></button>
+
+        <div class="nav-group" id="navGrupoPdv">
+          <button class="nav-item nav-group-toggle">
+            <i data-lucide="monitor-dot"></i>
+            <span>PDV</span>
+            <i data-lucide="chevron-right" class="nav-chevron"></i>
+          </button>
+          <div class="nav-sub" id="navPdvSub">
+            <button class="nav-item nav-sub-item" data-view="receipts">
+              <i data-lucide="receipt-text"></i><span>Cupons</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="terminals">
+              <i data-lucide="scan-barcode"></i><span>Consulta VAR</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="alerts">
+              <i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="reports">
+              <i data-lucide="chart-no-axes-combined"></i><span>Relatórios</span>
+            </button>
+          </div>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
-        <button class="nav-item"><i data-lucide="settings"></i><span>Configurações</span></button>
+        <div class="nav-group" id="navConfiguracoes">
+          <button class="nav-item nav-group-toggle">
+            <i data-lucide="settings"></i>
+            <span>Configurações</span>
+            <i data-lucide="chevron-right" class="nav-chevron"></i>
+          </button>
+          <div class="nav-sub" id="navConfigSub">
+            <button class="nav-item nav-sub-item" data-view="users" id="navUsuarios" style="display:none">
+              <i data-lucide="users"></i><span>Usuários</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="pdvs" id="navPdvs" style="display:none">
+              <i data-lucide="store"></i><span>PDVs</span>
+            </button>
+          </div>
+        </div>
         <div class="environment">
           <span class="status-dot online"></span>
-          Ambiente de demonstração
+          Produção
         </div>
       </div>
     </aside>
@@ -74,10 +130,13 @@
             <button id="nextDay" class="icon-button" aria-label="Próximo dia"><i data-lucide="chevron-right"></i></button>
           </div>
           <button class="icon-button notification-button" aria-label="Notificações"><i data-lucide="bell"></i><span id="notifBadge">0</span></button>
-          <div class="profile">
-            <div class="avatar">EM</div>
-            <div><strong>Elishafan</strong><span>Administrador</span></div>
+          <div class="profile" id="profileMenu" style="cursor:pointer">
+            <div class="avatar" id="profileAvatar">?</div>
+            <div><strong id="profileName">—</strong><span id="profileRole">—</span></div>
             <i data-lucide="chevron-down"></i>
+            <div class="profile-dropdown" id="profileDropdown">
+              <button id="logoutBtn"><i data-lucide="log-out"></i> Sair</button>
+            </div>
           </div>
         </div>
       </header>
@@ -136,7 +195,7 @@
             </div>
 
             <div class="table-wrap">
-              <table>
+              <table class="alerts-table">
                 <thead>
                   <tr>
                     <th>Severidade</th>
@@ -194,7 +253,268 @@
           </article>
         </section>
       </section>
+
+      <!-- View: Usuários -->
+      <section class="workspace" id="viewUsers" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Controle de acesso</p>
+            <h1>Usuários</h1>
+            <p>Gerencie quem pode acessar o sistema e seus níveis de permissão.</p>
+          </div>
+          <button class="primary-action" id="btnNovoUsuario"><i data-lucide="user-plus"></i> Novo usuário</button>
+        </div>
+
+        <div class="alerts-panel" style="margin-top:0">
+          <div class="table-wrap">
+            <table class="users-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>E-mail</th>
+                  <th>Perfil</th>
+                  <th>Loja</th>
+                  <th>Status</th>
+                  <th aria-label="Ações"></th>
+                </tr>
+              </thead>
+              <tbody id="usuariosTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- View: PDV Cards (VAR) -->
+      <section class="workspace" id="viewPdvCards" style="display:none">
+
+        <!-- Estado 1: grid de cards -->
+        <div id="pdvCardsGrid">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Operação</p>
+              <h1>PDVs</h1>
+              <p>Selecione um PDV para consultar cupons.</p>
+            </div>
+          </div>
+          <div class="pdv-cards" id="pdvCardsContainer"></div>
+        </div>
+
+        <!-- Estado 2: busca VAR -->
+        <div id="pdvVarSearch" style="display:none">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="varBreadcrumb">PDV 01 · Loja 106</p>
+              <h1>Consulta de cupom</h1>
+              <p>Digite o número do cupom para revisar os eventos registrados.</p>
+            </div>
+            <button class="secondary-action" id="btnVoltarCards"><i data-lucide="arrow-left"></i> Voltar</button>
+          </div>
+
+          <div class="var-search-box">
+            <form id="formVarCupom">
+              <label class="var-search-label">Número do cupom
+                <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
+              </label>
+              <div class="var-radio-group">
+                <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
+                <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
+              </div>
+              <div id="varItemField" style="display:none">
+                <label class="var-search-label">Nome ou código do produto
+                  <input id="varItemInput" type="text" placeholder="Ex: Café Maratá">
+                </label>
+              </div>
+              <button type="submit" class="primary-action var-search-btn"><i data-lucide="search"></i> Buscar</button>
+            </form>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- View: Cupons (lista do dia) -->
+      <section class="workspace" id="viewReceipts" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Operação</p>
+            <h1>Cupons do dia</h1>
+            <p>Todos os cupons gerados no PDV — clique para revisar.</p>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="cupons-filtros">
+          <div class="cupons-datas">
+            <button class="period-button cupons-quick" data-days="0">Hoje</button>
+            <button class="period-button cupons-quick" data-days="1">Ontem</button>
+            <button class="period-button cupons-quick" data-days="2">Anteontem</button>
+            <input type="date" id="cuponsDateInput" class="cupons-select" style="cursor:pointer">
+          </div>
+          <div class="cupons-filtros-linha">
+            <label class="search-box" style="flex:1"><i data-lucide="search"></i>
+              <input id="cuponsSearch" placeholder="Buscar cupom ou operador…">
+            </label>
+            <select id="cuponsOperadorFilter" class="cupons-select">
+              <option value="">Todos os operadores</option>
+            </select>
+            <select id="cuponsPeriodoFilter" class="cupons-select">
+              <option value="">Todo o dia</option>
+              <option value="manha">Manhã (06–12h)</option>
+              <option value="tarde">Tarde (12–18h)</option>
+              <option value="noite">Noite (18–23h)</option>
+            </select>
+            <button class="secondary-action" id="btnCarregarCupons"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+        <div class="alerts-panel" style="margin-top:0">
+          <div class="cupons-table-wrap">
+            <table class="cupons-table" id="cuponsTable">
+              <colgroup>
+                <col style="width:8%">
+                <col style="width:10%">
+                <col style="width:40%">
+                <col class="cupons-col-itens" style="width:8%">
+                <col style="width:18%">
+                <col style="width:16%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Horário</th>
+                  <th>Cupom</th>
+                  <th>Operador</th>
+                  <th class="cupons-col-itens" style="text-align:center">Itens</th>
+                  <th style="text-align:right">Total</th>
+                  <th style="text-align:right"></th>
+                </tr>
+              </thead>
+              <tbody id="cuponsTableBody">
+                <tr class="empty-row"><td colspan="6">Selecione uma data para carregar os cupons.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="cuponsFooter">—</span></div>
+        </div>
+      </section>
+
+      <!-- View: PDVs -->
+      <section class="workspace" id="viewPdvs" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>PDVs cadastrados</h1>
+            <p>Gerencie as lojas e seus tokens de integração com o bridge.</p>
+          </div>
+          <button class="primary-action" id="btnNovoPdv"><i data-lucide="plus"></i> Novo PDV</button>
+        </div>
+        <div class="alerts-panel" style="margin-top:0">
+          <div class="table-wrap">
+            <table class="pdvs-table">
+              <thead>
+                <tr>
+                  <th>PDV</th>
+                  <th>Loja</th>
+                  <th>Token de API</th>
+                  <th>Criado em</th>
+                  <th aria-label="Ações"></th>
+                </tr>
+              </thead>
+              <tbody id="pdvsTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+
+  <!-- Modal: PDV -->
+  <div id="modalPdv" class="modal-backdrop" style="display:none">
+    <div class="user-modal" style="max-width:460px">
+      <div class="modal-header">
+        <div><p class="eyebrow">Configurações</p><h2 id="modalPdvTitulo">Novo PDV</h2></div>
+        <button id="closeModalPdv" class="icon-button"><i data-lucide="x"></i></button>
+      </div>
+      <form id="formPdv">
+        <div class="form-row">
+          <label>Nome do PDV<input id="pPdvNome" type="text" required placeholder="Ex: PDV 1"></label>
+          <label>Nome da Loja<input id="pNome" type="text" required placeholder="Ex: Loja 106"></label>
+        </div>
+        <label id="pIdLabel">ID (interno)<input id="pId" type="text" required placeholder="Ex: loja-106-pdv1" pattern="[a-z0-9\-]+" title="Letras minúsculas, números e hífen"></label>
+        <p id="modalPdvErro" class="login-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="cancelarModalPdv" class="secondary-action">Cancelar</button>
+          <button type="submit" class="primary-action">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Token revelado -->
+  <div id="modalToken" class="modal-backdrop" style="display:none">
+    <div class="user-modal" style="max-width:460px">
+      <div class="modal-header">
+        <div><p class="eyebrow">Configurações</p><h2>Token gerado</h2></div>
+        <button id="closeModalToken" class="icon-button"><i data-lucide="x"></i></button>
+      </div>
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Copie este token agora. Ele não será exibido completo novamente.</p>
+      <div class="token-reveal-box">
+        <code id="tokenRevelado"></code>
+        <button type="button" id="btnCopiarTokenRevelado" class="primary-action" style="margin-top:14px;width:100%"><i data-lucide="copy"></i> Copiar token</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Criar / Editar usuário -->
+  <div id="modalUsuario" class="modal-backdrop" style="display:none">
+    <div class="user-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">Controle de acesso</p><h2 id="modalUsuarioTitulo">Novo usuário</h2></div>
+        <button id="closeModalUsuario" class="icon-button"><i data-lucide="x"></i></button>
+      </div>
+      <form id="formUsuario">
+        <div class="form-row">
+          <label>Nome completo<input id="uNome" type="text" required placeholder="Ex: João Silva"></label>
+          <label>E-mail<input id="uEmail" type="email" required placeholder="joao@empresa.com"></label>
+        </div>
+        <div class="form-row">
+          <label>Perfil
+            <select id="uPerfil" required>
+              <option value="">Selecione...</option>
+              <option value="admin">Administrador</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="operador">Operador</option>
+            </select>
+          </label>
+          <label>Loja (ID)
+            <input id="uLoja" type="text" placeholder="loja-106 (vazio = acesso global)">
+          </label>
+        </div>
+        <label id="uSenhaLabel">Senha<input id="uSenha" type="password" placeholder="Mínimo 6 caracteres"></label>
+        <p id="modalUsuarioErro" class="login-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="cancelarModalUsuario" class="secondary-action">Cancelar</button>
+          <button type="submit" class="primary-action" id="salvarUsuarioBtn">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Trocar senha -->
+  <div id="modalSenha" class="modal-backdrop" style="display:none">
+    <div class="user-modal" style="max-width:380px">
+      <div class="modal-header">
+        <div><p class="eyebrow">Segurança</p><h2>Redefinir senha</h2></div>
+        <button id="closeModalSenha" class="icon-button"><i data-lucide="x"></i></button>
+      </div>
+      <form id="formSenha">
+        <p id="modalSenhaNome" style="margin:0 0 16px;font-weight:600"></p>
+        <label>Nova senha<input id="novaSenha" type="password" required placeholder="Mínimo 6 caracteres" minlength="6"></label>
+        <p id="modalSenhaErro" class="login-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="cancelarModalSenha" class="secondary-action">Cancelar</button>
+          <button type="submit" class="primary-action">Salvar senha</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <div id="drawerBackdrop" class="drawer-backdrop"></div>
@@ -241,6 +561,24 @@
     </div>
   </aside>
 
+  <div id="varDrawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="varDrawer" class="var-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow" id="varResultModalBreadcrumb">PDV 001 · Loja 106</p>
+        <h2 id="varResultModalTitle">Cupom 221548</h2>
+      </div>
+      <button id="closeVarResult" class="icon-button" aria-label="Fechar"><i data-lucide="x"></i></button>
+    </div>
+    <div class="var-tab-bar">
+      <button class="var-tab active" data-tab="fotos"><i data-lucide="images"></i>Fotos</button>
+      <button class="var-tab" data-tab="video"><i data-lucide="play-circle"></i>Vídeo</button>
+    </div>
+    <div id="varResultModalBody" class="var-result-body">
+      <!-- rendered by JS -->
+    </div>
+  </aside>
+
   <div id="videoModal" class="modal-backdrop">
     <div class="video-modal">
       <div class="modal-header"><div><p class="eyebrow">Gravação POS · iMHDX</p><h2>Vídeo do evento</h2></div><button id="closeVideo" class="icon-button"><i data-lucide="x"></i></button></div>
@@ -252,9 +590,32 @@
     </div>
   </div>
 
+  <!-- Drawer: Cupom Receipt -->
+  <div id="receiptDrawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="receiptDrawer" class="var-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow" id="receiptDrawerEyebrow">PDV 001 · Loja 106</p>
+        <h2 id="receiptDrawerTitle">Cupom —</h2>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="btnImprimirCupom" class="secondary-action" title="Imprimir">
+          <i data-lucide="printer"></i> Imprimir
+        </button>
+        <button id="closeReceiptDrawer" class="icon-button" aria-label="Fechar">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+    <div id="receiptDrawerBody" class="var-result-body" style="font-size:13px">
+      <!-- preenchido por JS -->
+    </div>
+  </aside>
+
   <div id="toast" class="toast"><i data-lucide="circle-check"></i><span>Ocorrência salva.</span></div>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
