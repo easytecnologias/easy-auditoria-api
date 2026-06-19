@@ -64,6 +64,10 @@ def _validar_data(valor: Optional[str]) -> Optional[str]:
     valor = valor.strip()
     if not DATE_RE.fullmatch(valor):
         raise HTTPException(status_code=422, detail="Data invalida. Use AAAA-MM-DD")
+    try:
+        date.fromisoformat(valor)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Data invalida. Use AAAA-MM-DD")
     return valor
 
 
