@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import bcrypt
 from jose import JWTError, jwt
@@ -203,6 +204,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Easy Auditoria API", lifespan=lifespan)
 
+# CORS: restringe a origens conhecidas (dashboard + rede local)
+_CORS_ORIGINS = [o.strip() for o in os.environ.get(
+    "CORS_ORIGINS",
+    "http://10.10.12.7:8098,https://10.10.12.7:8098,http://localhost:8098",
+).split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -211,7 +226,16 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    if request.url.scheme == "https":
+    response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    # CSP conservador: permite scripts/estilos inline apenas do próprio host
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; "
+        "media-src 'self' http://138.99.28.216:8765 blob:; connect-src 'self' http://138.99.28.216:8765",
+    )
+    if request.url.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
