@@ -3,6 +3,23 @@ __pycache__/
 *.db
 # Configuração local com credenciais reais (não commitar)
 dashboard/config.js
+# Scripts de teste/debug/patch one-time
+pdv1-integration/test_*.py
+pdv1-integration/test_*.sh
+pdv1-integration/check_*.py
+pdv1-integration/check_*.sh
+pdv1-integration/patch_*.py
+pdv1-integration/fix_*.py
+pdv1-integration/deploy_*.ps1
+pdv1-integration/deploy_*.sh
+pdv1-integration/apply_*.sh
+pdv1-integration/setup_*.sh
+pdv1-integration/start_*.sh
+pdv1-integration/gen_*.sh
+pdv1-integration/recreate_*.sh
+pdv1-integration/add_imhdx_env.py
+nginx_ea.conf
+dashboard/nginx_main.conf
 # Dados de produção
 data/
 purchase_videos/

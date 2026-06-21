@@ -16,6 +16,28 @@ async function apiFetch(url, opts = {}) {
   return resp;
 }
 
+// Carrega imagem protegida com auth e retorna blob URL (evita token na URL)
+const _protectedBlobUrls = new Set();
+async function mediaObjectUrl(url) {
+  const token = getToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const resp = await fetch(url, { headers });
+  if (resp.status === 401) { mostrarLogin(); throw new Error("unauthorized"); }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const blob = await resp.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  _protectedBlobUrls.add(objectUrl);
+  return objectUrl;
+}
+
+// Substitui data-auth-src por blob URLs autenticados
+function hydrateProtectedMedia(root = document) {
+  root.querySelectorAll("img[data-auth-src]").forEach(async img => {
+    try { img.src = await mediaObjectUrl(img.dataset.authSrc); }
+    catch { img.src = "assets/frame-register.svg"; }
+  });
+}
+
 function mostrarLogin() {
   clearToken();
   document.getElementById("loginScreen").hidden = false;
@@ -97,6 +119,10 @@ document.addEventListener("click", () => {
 });
 document.getElementById("logoutBtn").addEventListener("click", () => {
   mostrarLogin();
+});
+document.getElementById("sidebarLogoutBtn")?.addEventListener("click", () => {
+  clearToken();
+  window.location.reload();
 });
 
 // ── App ───────────────────────────────────────────────
@@ -301,6 +327,7 @@ function renderAlerts() {
       }
     });
   });
+  hydrateProtectedMedia(table);
   lucide.createIcons();
 }
 
@@ -556,7 +583,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts"];
+const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -565,20 +592,23 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     _closeMobileSidebar(); // fecha menu no mobile ao navegar
     const view = item.dataset.view;
     const mainWorkspace = document.querySelector(".workspace:not([id])");
-    const isSubView = VIEWS.some(id => {
+    let isSubView = false;
+    VIEWS.forEach(id => {
       const el = document.getElementById(id);
       const show = (id === "viewUsers" && view === "users") ||
                    (id === "viewPdvs" && view === "pdvs") ||
                    (id === "viewPdvCards" && view === "terminals") ||
-                   (id === "viewReceipts" && view === "receipts");
+                   (id === "viewReceipts" && view === "receipts") ||
+                   (id === "viewConsultar" && view === "consultar");
       if (el) el.style.display = show ? "" : "none";
-      return show;
+      if (show) isSubView = true;
     });
     if (mainWorkspace) mainWorkspace.style.display = isSubView ? "none" : "";
     if (view === "users") carregarUsuarios();
     else if (view === "pdvs") carregarPdvs();
     else if (view === "terminals") carregarCardsPdv();
     else if (view === "receipts") iniciarViewCupons();
+    else if (view === "consultar") iniciarViewConsultar();
     else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
       showToast("Tela incluída na próxima etapa do protótipo.");
     }
@@ -814,43 +844,131 @@ let varTipoAtivo = "all";
 function renderVarBody() {
   const body = document.getElementById("varResultModalBody");
   if (varResultLista.length === 0) {
-    if (varAbaAtiva === "video" && varTipoAtivo === "all") {
-      // Sem eventos mas pode tentar gerar vídeo pelo spy file
-      // Renderiza normalmente a aba vídeo (com lista vazia)
-    } else {
+    // Aba Fotos e Vídeo podem funcionar via spy file mesmo sem eventos no banco
+    const semEventosOk = varAbaAtiva === "fotos" ||
+                         (varAbaAtiva === "video" && varTipoAtivo === "all");
+    if (!semEventosOk) {
       body.innerHTML = `<div class="var-empty"><i data-lucide="search-x" style="width:32px;height:32px;margin-bottom:10px;color:var(--muted)"></i><br>Nenhum evento encontrado para este cupom.</div>`;
       lucide.createIcons();
       return;
     }
   }
   if (varAbaAtiva === "fotos") {
-    body.innerHTML = varResultLista.map(a => `
-      <div class="var-event-card" data-id="${a.id}" style="cursor:pointer">
-        <div class="var-event-thumb">
-          <img src="${a.imageUrl || 'assets/frame-register.svg'}" ${a.imageUrl ? `onerror="this.src='assets/frame-register.svg';this.onerror=null"` : ''} alt="">
+    const STREAMER_URL_F   = (window.APP_CONFIG || {}).STREAMER_URL   || "";
+    const TOKEN_STREAMER_F = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+    const cupomNumF = varResultLista[0]?.receipt || document.getElementById("varCupomInput").value.trim();
+
+    // ── Layout: foto grande + lista de itens clicável ────────────────────────
+    body.innerHTML = `
+      <div class="var-foto-viewer">
+        <div class="var-foto-main">
+          <img id="varFotoMain" src="assets/frame-register.svg" alt="Snapshot"
+            style="width:100%;height:auto;object-fit:contain;background:#111;border-radius:8px;display:block">
+          <div id="varFotoLabel" style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">—</div>
         </div>
-        <div class="var-event-info">
-          <div class="var-event-top">
-            <span class="severity ${a.severity}"><i></i>${a.severity === "critical" ? "Crítico" : a.severity === "warning" ? "Atenção" : "Normal"}</span>
-            <span class="var-event-time">${a.time}</span>
-          </div>
-          <span class="var-event-product">${a.product}</span>
-          <span class="var-event-sub">${a.qty} · ${a.value}</span>
-          <p class="var-event-analysis">${a.analysis || ""}</p>
-        </div>
-        <div class="var-event-actions">
-          <button class="secondary-action" data-id="${a.id}"><i data-lucide="image"></i></button>
-        </div>
-      </div>
-    `).join("");
-    body.querySelectorAll(".var-event-card").forEach(card => {
-      card.addEventListener("click", () => {
-        const alert = varResultLista.find(a => a.id === Number(card.dataset.id));
-        if (!alert) return;
-        closeVarDrawer();
-        openDrawer(alert);
+        <div id="varFotoLista" style="margin-top:12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:340px"></div>
+      </div>`;
+
+    const mainImg   = document.getElementById("varFotoMain");
+    const mainLabel = document.getElementById("varFotoLabel");
+    const lista     = document.getElementById("varFotoLista");
+
+    function _setFoto(src, label, useAuth) {
+      mainLabel.textContent = label || "—";
+      if (!src) { mainImg.src = "assets/frame-register.svg"; return; }
+      // Mostrar loading enquanto busca
+      mainImg.style.opacity = "0.3";
+      mainImg.src = "assets/frame-register.svg";
+      const doLoad = (url) => {
+        const tmp = new Image();
+        tmp.onload = () => { mainImg.src = url; mainImg.style.opacity = "1"; };
+        tmp.onerror = () => { mainImg.style.opacity = "1"; };
+        tmp.src = url;
+      };
+      if (useAuth) {
+        mediaObjectUrl(src).then(blob => doLoad(blob)).catch(() => { mainImg.style.opacity = "1"; });
+      } else {
+        // Fetch com token via header para evitar token na URL visível ao browser
+        fetch(src).then(r => r.ok ? r.blob() : null)
+          .then(b => { if (b) doLoad(URL.createObjectURL(b)); else mainImg.style.opacity = "1"; })
+          .catch(() => { mainImg.style.opacity = "1"; });
+      }
+    }
+
+    function _buildRow(time, product, valueStr, active, onClick) {
+      const row = document.createElement("div");
+      row.className = "var-foto-row" + (active ? " active" : "");
+      row.innerHTML = `
+        <span class="var-foto-row-time">${(time || "").slice(0,5)}</span>
+        <span class="var-foto-row-prod">${product || ""}</span>
+        <span class="var-foto-row-val">${valueStr || ""}</span>`;
+      row.addEventListener("click", () => {
+        lista.querySelectorAll(".var-foto-row").forEach(r => r.classList.remove("active"));
+        row.classList.add("active");
+        onClick();
       });
-    });
+      return row;
+    }
+
+    if (varResultLista.length > 0) {
+      // Cupom COM eventos no banco — usar imageUrl existente ou snapshot do DVR
+      varResultLista.forEach((a, i) => {
+        const row = _buildRow(a.time, a.product, a.value, i === 0, () => {
+          if (a.imageUrl) {
+            _setFoto(a.imageUrl, `${a.time} · ${a.product}`, true);
+          } else if (a.timestamp && STREAMER_URL_F) {
+            _setFoto(
+              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(a.timestamp)}&token=${TOKEN_STREAMER_F}`,
+              `${a.time} · ${a.product}`, false
+            );
+          }
+        });
+        lista.appendChild(row);
+      });
+      // Exibir foto do primeiro item
+      const first = varResultLista[0];
+      if (first.imageUrl) {
+        _setFoto(first.imageUrl, `${first.time} · ${first.product}`, true);
+      } else if (first.timestamp && STREAMER_URL_F) {
+        _setFoto(
+          `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(first.timestamp)}&token=${TOKEN_STREAMER_F}`,
+          `${first.time} · ${first.product}`, false
+        );
+      }
+    } else if (STREAMER_URL_F) {
+      // Cupom SEM eventos — buscar itens do spy file e snapshots do DVR
+      lista.innerHTML = `<div style="padding:12px;text-align:center;color:var(--muted)">Carregando itens…</div>`;
+      fetch(`${STREAMER_URL_F}/cupom/${cupomNumF}/items?token=${TOKEN_STREAMER_F}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          lista.innerHTML = "";
+          if (!data?.itens?.length) {
+            lista.innerHTML = `<div style="padding:12px;color:var(--muted)">Sem itens encontrados.</div>`;
+            return;
+          }
+          data.itens.forEach((it, i) => {
+            const snapUrl = `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(it.timestamp)}&token=${TOKEN_STREAMER_F}`;
+            const row = _buildRow(
+              it.time, it.desc,
+              `R$ ${it.value.toFixed(2).replace(".",",")}`,
+              i === 0,
+              () => _setFoto(snapUrl, `${it.time} · ${it.desc}`, false)
+            );
+            lista.appendChild(row);
+          });
+          if (data.itens[0]) {
+            const f = data.itens[0];
+            _setFoto(
+              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(f.timestamp)}&token=${TOKEN_STREAMER_F}`,
+              `${f.time} · ${f.desc}`, false
+            );
+          }
+        }).catch(() => {
+          lista.innerHTML = `<div style="padding:12px;color:var(--muted)">Erro ao carregar itens.</div>`;
+        });
+    }
+    lucide.createIcons();
+    return;
   } else if (varTipoAtivo === "all") {
     const cupomNum = varResultLista[0]?.receipt || document.getElementById("varCupomInput").value.trim();
     const pdvPad = String(varPdvSelecionado).padStart(3, "0");
@@ -859,7 +977,7 @@ function renderVarBody() {
     const TOKEN_STREAMER = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
     body.innerHTML = `
       <div class="var-inline-player">
-        <video id="varVideoEl" controls style="display:none"></video>
+        <video id="varVideoEl" controls playsinline webkit-playsinline style="display:none"></video>
         <div id="varVideoStatus">
           <div id="varVideoLoading" hidden style="text-align:center;padding:24px;color:var(--muted)">
             <i data-lucide="loader-circle" style="width:32px;height:32px;animation:spin 1s linear infinite"></i>
@@ -946,7 +1064,26 @@ function renderVarBody() {
     }
 
     // Registrar timeupdate UMA vez aqui (cobre probe + streaming + arquivo)
-    videoEl.addEventListener("timeupdate", () => _sincTimeline(videoEl.currentTime));
+    let _autoSeeked = false;
+    videoEl.addEventListener("timeupdate", () => {
+      const t = videoEl.currentTime;
+      _sincTimeline(t);
+      // Auto-seek: se passou mais de 2s e nenhum item ficou verde ainda,
+      // e o vídeo é seekable (arquivo), pular para 5s antes do primeiro item
+      if (!_autoSeeked && t > 2 && _videoStartEpoch !== null && videoEl.seekable?.length > 0) {
+        const rows = document.querySelectorAll("#varVideoTimeline .var-timeline-item[data-ts]");
+        if (rows.length > 0) {
+          const firstMs = new Date(rows[0].dataset.ts.replace(" ","T")).getTime();
+          const gapSec = (firstMs - _videoStartEpoch) / 1000;
+          if (gapSec > 20 && t < gapSec - 10) {
+            _autoSeeked = true;
+            videoEl.currentTime = Math.max(0, gapSec - 5);
+          } else {
+            _autoSeeked = true; // não precisa de seek
+          }
+        }
+      }
+    });
 
     // ── Definir _videoStartEpoch ──────────────────────────────────────────────
     function _definirStartEpoch(overrideMs) {
@@ -964,6 +1101,8 @@ function renderVarBody() {
         .then(d => { if (d?.start_time) _videoStartEpoch = new Date(d.start_time.replace(" ","T")).getTime(); })
         .catch(() => {});
     }
+
+    const _isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     // ── Exibir vídeo (arquivo salvo no servidor) ──────────────────────────────
     function _mostrarVideoArquivo(src) {
@@ -1125,7 +1264,36 @@ function renderVarBody() {
 
       videoEl.addEventListener("loadedmetadata", onOk, { once: true });
       videoEl.addEventListener("error", onErr, { once: true });
-      videoEl.src = streamSrc; videoEl.load();
+
+      if (_isMobile) {
+        // Mobile: streaming fMP4 não funciona — gerar clip MP4 completo via /clip
+        clearTimeout(fallbackTimer); // pausar timer enquanto gera o clip
+        const sp = new URL(streamSrc, location.href).searchParams;
+        const clipParams = new URLSearchParams({
+          start: sp.get("start") || "", end: sp.get("end") || "", token: sp.get("token") || ""
+        });
+        const pEl = loadingBox.querySelector("p");
+        if (pEl) pEl.textContent = "Gerando clipe para mobile…";
+        fetch(`${STREAMER_URL}/clip?${clipParams}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (!d?.token) { onErr(); return; }
+            // video.src direto — MP4 com Content-Length permite play progressivo
+            // O browser usa o mesmo trust de cert da sessão (sem re-bloqueio)
+            const mobileTimer = setTimeout(() => {
+              videoEl.removeEventListener("loadedmetadata", onOk);
+              videoEl.removeEventListener("error", onErr);
+              videoEl.src = ""; _mostrarFalha("Tempo esgotado.");
+            }, 30000);
+            videoEl.addEventListener("loadedmetadata", () => clearTimeout(mobileTimer), { once: true });
+            videoEl.addEventListener("error", () => { clearTimeout(mobileTimer); onErr(); }, { once: true });
+            videoEl.src = `${STREAMER_URL}/clip/${d.token}?token=${clipParams.get("token")}`;
+            videoEl.load();
+          })
+          .catch(() => onErr());
+      } else {
+        videoEl.src = streamSrc; videoEl.load();
+      }
     });
 
     // ── Click em item da timeline → seek ──────────────────────────────────────
@@ -1219,6 +1387,36 @@ const STREAMER_TOKEN = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
 
 let _cuponsTodos = [];  // cache para filtro local
 
+// ── Paginação genérica ────────────────────────────────────────────────────────
+const POR_PAGINA = 25;
+
+function _renderPaginacao(idInfo, idBtns, idPag, paginaAtual, total, onPage) {
+  const totalPags = Math.ceil(total / POR_PAGINA);
+  const info = document.getElementById(idInfo);
+  const btns = document.getElementById(idBtns);
+  const pag  = document.getElementById(idPag);
+  if (!btns || !pag) return;
+  if (totalPags <= 1) { pag.style.display = "none"; if (info) info.textContent = `${total} registros`; return; }
+  pag.style.display = "";
+  const inicio = (paginaAtual - 1) * POR_PAGINA + 1;
+  const fim = Math.min(paginaAtual * POR_PAGINA, total);
+  if (info) info.textContent = `${inicio}–${fim} de ${total}`;
+  btns.innerHTML = "";
+  const addBtn = (label, page, disabled, active) => {
+    const b = document.createElement("button");
+    b.className = "paginacao-btn" + (active ? " active" : "");
+    b.textContent = label; b.disabled = disabled;
+    b.addEventListener("click", () => onPage(page));
+    btns.appendChild(b);
+  };
+  addBtn("‹", paginaAtual - 1, paginaAtual === 1, false);
+  const start = Math.max(1, paginaAtual - 2), end = Math.min(totalPags, paginaAtual + 2);
+  if (start > 1) { addBtn("1", 1, false, false); if (start > 2) btns.insertAdjacentHTML("beforeend", `<span style="padding:0 4px;color:var(--muted)">…</span>`); }
+  for (let i = start; i <= end; i++) addBtn(i, i, false, i === paginaAtual);
+  if (end < totalPags) { if (end < totalPags - 1) btns.insertAdjacentHTML("beforeend", `<span style="padding:0 4px;color:var(--muted)">…</span>`); addBtn(totalPags, totalPags, false, false); }
+  addBtn("›", paginaAtual + 1, paginaAtual === totalPags, false);
+}
+
 function iniciarViewCupons() {
   const pad = n => String(n).padStart(2,"0");
   const hoje = new Date();
@@ -1230,13 +1428,18 @@ function iniciarViewCupons() {
   carregarCupons(input.value);
 }
 
-function _aplicarFiltrosCupons() {
+let _cuponsPagAtual = 1;
+let _cuponsListaFiltrada = [];
+
+function _aplicarFiltrosCupons(pagina) {
+  pagina = pagina || 1;
+  _cuponsPagAtual = pagina;
   const busca   = (document.getElementById("cuponsSearch")?.value || "").toLowerCase();
   const op      = document.getElementById("cuponsOperadorFilter")?.value || "";
   const periodo = document.getElementById("cuponsPeriodoFilter")?.value || "";
   const PERIODOS = { manha: [6,12], tarde: [12,18], noite: [18,23] };
 
-  let lista = _cuponsTodos.filter(c => {
+  _cuponsListaFiltrada = _cuponsTodos.filter(c => {
     if (op && c.operador !== op) return false;
     if (busca && !c.numero.includes(busca) && !(c.operador||"").toLowerCase().includes(busca)) return false;
     if (periodo && PERIODOS[periodo]) {
@@ -1249,13 +1452,15 @@ function _aplicarFiltrosCupons() {
 
   const tbody = document.getElementById("cuponsTableBody");
   const footer = document.getElementById("cuponsFooter");
-  if (!lista.length) {
+  if (!_cuponsListaFiltrada.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhum cupom encontrado com esses filtros.</td></tr>`;
     footer.textContent = "0 cupons";
+    document.getElementById("cuponsPaginacao").style.display = "none";
     return;
   }
-  const total = lista.reduce((s, c) => s + (c.total || 0), 0);
-  tbody.innerHTML = lista.map(c => `
+  const pagSlice = _cuponsListaFiltrada.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
+  const totalVal = _cuponsListaFiltrada.reduce((s, c) => s + (c.total || 0), 0);
+  tbody.innerHTML = pagSlice.map(c => `
     <tr data-cupom="${c.numero}">
       <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
       <td><strong>${c.numero}</strong></td>
@@ -1269,8 +1474,9 @@ function _aplicarFiltrosCupons() {
         </div>
       </td>
     </tr>`).join("");
-  footer.textContent = `${lista.length} de ${_cuponsTodos.length} cupons · Total R$ ${total.toFixed(2).replace(".",",")}`;
+  footer.textContent = `${_cuponsListaFiltrada.length} de ${_cuponsTodos.length} cupons · Total R$ ${totalVal.toFixed(2).replace(".",",")}`;
   lucide.createIcons();
+  _renderPaginacao("cuponsPaginacaoInfo","cuponsPaginacaoBtns","cuponsPaginacao", pagina, _cuponsListaFiltrada.length, p => _aplicarFiltrosCupons(p));
 
   tbody.querySelectorAll(".cupom-btn-nota").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); abrirCupomDrawer(btn.dataset.cupom); });
@@ -1339,9 +1545,9 @@ document.getElementById("cuponsDateInput")?.addEventListener("change", e => {
   document.querySelectorAll(".cupons-quick").forEach(b => b.classList.remove("active"));
   carregarCupons(e.target.value);
 });
-document.getElementById("cuponsSearch")?.addEventListener("input", _aplicarFiltrosCupons);
-document.getElementById("cuponsOperadorFilter")?.addEventListener("change", _aplicarFiltrosCupons);
-document.getElementById("cuponsPeriodoFilter")?.addEventListener("change", _aplicarFiltrosCupons);
+document.getElementById("cuponsSearch")?.addEventListener("input", () => _aplicarFiltrosCupons(1));
+document.getElementById("cuponsOperadorFilter")?.addEventListener("change", () => _aplicarFiltrosCupons(1));
+document.getElementById("cuponsPeriodoFilter")?.addEventListener("change", () => _aplicarFiltrosCupons(1));
 
 // ── Receipt Drawer ────────────────────────────────────────────────────────────
 function openReceiptDrawer() {
@@ -1607,6 +1813,224 @@ document.getElementById("formPdv").addEventListener("submit", async (e) => {
   carregarPdvs();
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TELA CONSULTAR
+// ═══════════════════════════════════════════════════════════════════════════
+
+(function() {
+  let _consultarModo = "cupons";   // "cupons" | "consultas"
+  let _consultarDate = new Date(); // data selecionada
+  let _consultarTimer = null;
+
+  function _fmtDate(d) {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function _fmtBRL(v) { return 'R$ ' + (v||0).toFixed(2).replace('.',','); }
+  function _fmtQty(q, u) {
+    const n = parseFloat(q)||0;
+    return u === 'Kg' ? n.toFixed(3).replace('.',',') + ' kg' : n.toFixed(0) + 'x';
+  }
+
+  let _consultarLista = [];
+  let _consultarPagAtual = 1;
+
+  function _renderConsultar(pagina) {
+    pagina = pagina || 1;
+    _consultarPagAtual = pagina;
+    const busca    = (document.getElementById("consultarSearch")?.value || "").toLowerCase();
+    const operador = document.getElementById("consultarOperadorFilter")?.value || "";
+    const periodo  = document.getElementById("consultarPeriodoFilter")?.value || "";
+    const tbody = document.getElementById("consultarConsultasBody");
+    const empty = document.getElementById("consultarConsultasEmpty");
+    tbody.innerHTML = "";
+
+    // Mais recente primeiro
+    const listaFiltrada = [..._consultarLista].reverse().filter(c => {
+      if (busca && !`${c.desc} ${c.operador} ${c.cupom}`.toLowerCase().includes(busca)) return false;
+      if (operador && c.operador !== operador) return false;
+      if (periodo) {
+        const h = parseInt((c.time||"").slice(0,2));
+        if (periodo === "manha" && (h < 6  || h >= 12)) return false;
+        if (periodo === "tarde" && (h < 12 || h >= 18)) return false;
+        if (periodo === "noite" && (h < 18 || h >= 23)) return false;
+      }
+      return true;
+    });
+
+    if (!listaFiltrada.length) { empty.style.display = ""; document.getElementById("consultarPaginacao").style.display = "none"; return; }
+    empty.style.display = "none";
+    const lista = listaFiltrada.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
+    lista.forEach(c => {
+      const subtitulo = [c.acao_label, c.operador].filter(Boolean).join(" · ");
+      const tr = document.createElement("tr");
+      tr.className = "cupons-row";
+      tr.innerHTML = `
+        <td>${(c.time||"").slice(0,5)}</td>
+        <td>#${c.cupom||"—"}</td>
+        <td>
+          <div>${c.desc||c.cod||"—"}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${subtitulo}</div>
+        </td>
+        <td>${_fmtQty(c.qty, c.unit)}</td>
+        <td style="text-align:right">${_fmtBRL(c.vtotal)}</td>
+        <td style="text-align:right"><button class="btn-ver-item">Ver item</button></td>`;
+      tr.querySelector(".btn-ver-item").addEventListener("click", e => { e.stopPropagation(); _abrirVideoConsulta(c); });
+      tr.addEventListener("click", () => _abrirVideoConsulta(c));
+      tbody.appendChild(tr);
+    });
+    _renderPaginacao("consultarPaginacaoInfo","consultarPaginacaoBtns","consultarPaginacao", pagina, listaFiltrada.length, p => _renderConsultar(p));
+  }
+
+  function _carregarConsultar() {
+    const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
+    const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
+    const dateStr  = _fmtDate(_consultarDate);
+    const loading  = document.getElementById("consultarLoading");
+    const tabela   = document.getElementById("consultarTabelaConsultas");
+    loading.style.display = "";
+    tabela.style.display  = "none";
+
+    const input = document.getElementById("consultarDataInput");
+    if (input) input.value = dateStr;
+
+    fetch(`${STREAMER}/consultas?date=${dateStr}&token=${TOKEN}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        loading.style.display = "none";
+        tabela.style.display  = "";
+        _consultarLista = (d && d.consultas) || [];
+        const ops = [...new Set(_consultarLista.map(c => c.operador).filter(Boolean))].sort();
+        const sel = document.getElementById("consultarOperadorFilter");
+        if (sel) sel.innerHTML = '<option value="">Todos os operadores</option>' + ops.map(o => `<option value="${o}">${o}</option>`).join("");
+        _renderConsultar();
+      })
+      .catch(() => { loading.style.display = "none"; tabela.style.display = ""; });
+  }
+
+  // ── Modal de vídeo da consulta ─────────────────────────────────────────
+  let _cvmCtx = null;
+
+  window.fecharConsultaVideoModal = function() {
+    const modal = document.getElementById("consultaVideoModal");
+    const video = document.getElementById("cvmVideo");
+    modal.style.display = "none";
+    video.pause(); video.src = "";
+  };
+
+  window.cvmTentarNovamente = function() {
+    if (_cvmCtx) _abrirVideoConsulta(_cvmCtx);
+  };
+
+  function _abrirVideoConsulta(c) {
+    _cvmCtx = c;
+    const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
+    const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
+
+    const modal   = document.getElementById("consultaVideoModal");
+    const loading = document.getElementById("cvmLoading");
+    const video   = document.getElementById("cvmVideo");
+    const erro    = document.getElementById("cvmErro");
+
+    document.getElementById("cvmBreadcrumb").textContent = `PDV 01 · ${c.cupom ? "Cupom #"+c.cupom : ""}`;
+    document.getElementById("cvmTitle").textContent = c.desc || c.cod || "Item consultado";
+    document.getElementById("cvmDesc").textContent  = `${(c.time||"").slice(0,8)} · ${_fmtQty(c.qty, c.unit)} · ${_fmtBRL(c.vtotal)}`;
+
+    modal.style.display = "";
+    loading.style.display = ""; video.style.display = "none"; erro.style.display = "none";
+    video.pause(); video.src = "";
+
+    lucide.createIcons({ el: modal });
+
+    // Calcular janela: ts ± 10s em horário LOCAL (não UTC)
+    function _calcWindow(ts) {
+      const dt = new Date(ts.replace(" ","T"));
+      const s  = new Date(dt.getTime() - 10000);
+      const e  = new Date(dt.getTime() + 10000);
+      const fmt = d => {
+        const p = n => String(n).padStart(2,"0");
+        return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      };
+      return { start: fmt(s), end: fmt(e) };
+    }
+
+    function _montarVideo(startTs, endTs) {
+      const enc = s => encodeURIComponent(s);
+      const clipUrl = `${STREAMER}/clip?start=${enc(startTs)}&end=${enc(endTs)}&token=${TOKEN}`;
+
+      const timeout = setTimeout(() => {
+        loading.style.display = "none"; erro.style.display = "";
+      }, 90000);
+
+      fetch(clipUrl)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d?.token) throw new Error("no token");
+          clearTimeout(timeout);
+          video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
+          video.style.display = "";
+          loading.style.display = "none";
+          video.addEventListener("error", () => { video.style.display = "none"; erro.style.display = ""; }, { once: true });
+          video.play().catch(() => {});
+        })
+        .catch(() => { clearTimeout(timeout); loading.style.display = "none"; erro.style.display = ""; });
+    }
+
+    const win = _calcWindow(c.timestamp);
+    _montarVideo(win.start, win.end);
+  }
+
+  // ── Inicialização ──────────────────────────────────────────────────────
+  window.iniciarViewConsultar = function() {
+    _consultarDate = new Date();
+    _carregarConsultar();
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    // Botões de data rápida
+    document.querySelectorAll(".consultar-quick").forEach(b => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".consultar-quick").forEach(x => x.classList.remove("active", "cupons-quick-active"));
+        b.classList.add("active");
+        const d = new Date();
+        d.setDate(d.getDate() - parseInt(b.dataset.days));
+        _consultarDate = d;
+        const inp = document.getElementById("consultarDataInput");
+        if (inp) inp.value = _fmtDate(d);
+        _carregarConsultar();
+      });
+    });
+
+    // Input de data
+    const inp = document.getElementById("consultarDataInput");
+    if (inp) {
+      inp.addEventListener("change", () => {
+        if (!inp.value) return;
+        document.querySelectorAll(".consultar-quick").forEach(x => x.classList.remove("active"));
+        _consultarDate = new Date(inp.value + "T12:00:00");
+        _carregarConsultar();
+      });
+    }
+
+    // Filtros locais (busca, operador, período) — sempre volta pra página 1
+    document.getElementById("consultarSearch")?.addEventListener("input", () => _renderConsultar(1));
+    document.getElementById("consultarOperadorFilter")?.addEventListener("change", () => _renderConsultar(1));
+    document.getElementById("consultarPeriodoFilter")?.addEventListener("change", () => _renderConsultar(1));
+
+    // Botão atualizar
+    const btnR = document.getElementById("btnConsultarRefresh");
+    if (btnR) btnR.addEventListener("click", _carregarConsultar);
+
+    // Fechar modal ao clicar fora
+    const modal = document.getElementById("consultaVideoModal");
+    if (modal) {
+      modal.addEventListener("click", e => {
+        if (e.target === modal) fecharConsultaVideoModal();
+      });
+    }
+  });
+})();
+
 function iniciarApp() {
   atualizarRotuloData();
   carregarAlertas();
@@ -1623,3 +2047,16 @@ function iniciarApp() {
 }
 
 verificarAuth();
+
+// iOS Safari restaura scroll position ao reabrir aba — forçar topo em múltiplos momentos
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+function _forcarTopo() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+_forcarTopo();
+window.addEventListener('load', _forcarTopo);
+setTimeout(_forcarTopo, 100);
+setTimeout(_forcarTopo, 500);
+setTimeout(_forcarTopo, 1000);

@@ -6,9 +6,23 @@ Servidor de streaming de video do DVR iMHDX.
 - GET /cupom/NUMBER/info?token=...     → retorna JSON com start/end do cupom
 Porta: 8765
 """
-import os, re, json, datetime, pathlib, subprocess, threading, urllib.parse
+import os, re, json, datetime, pathlib, subprocess, threading, urllib.parse, tempfile, hashlib, time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+
+# Cache de clips gerados: {token: (filepath, expires_ts)}
+_clip_cache = {}
+_clip_lock  = threading.Lock()
+CLIP_TTL    = 300  # 5 minutos
+
+def _clip_cleanup():
+    now = time.time()
+    with _clip_lock:
+        expired = [k for k, (f, e) in _clip_cache.items() if now > e]
+        for k in expired:
+            try: os.unlink(_clip_cache[k][0])
+            except: pass
+            del _clip_cache[k]
 
 HOST      = os.environ.get("IMHDX_HOST",    "")
 USER      = os.environ.get("IMHDX_USER",    "")
@@ -19,7 +33,7 @@ PORT      = int(os.environ.get("VIDEO_STREAMER_PORT", "8765"))
 PDV_BASE  = os.environ.get("PDV_BASE_DIR", "/home/rpdv/frente")
 PDV_STATION = os.environ.get("PDV_STATION", "001")
 
-_sema = threading.Semaphore(1)
+_sema = threading.Semaphore(3)
 
 LINE_RE = re.compile(r'^(\d{2}:\d{2}:\d{2}):(\S+)\s*\|?(.*)')
 
@@ -177,6 +191,182 @@ def _buscar_receipt(cupom_num):
     return None
 
 
+def _teclas_path(dt):
+    name = "Teclas%s.%s" % (dt.strftime("%d%m%y"), PDV_STATION)
+    return pathlib.Path(PDV_BASE) / "Cm" / name
+
+
+TECLAS_RE = re.compile(r'^(\d{2}:\d{2}:\d{2}[.\d]*)\|K:([^|]+)\|A:([^|]+)\|R:([^|]*)\|')
+
+def _ts_to_secs(ts):
+    """HH:MM:SS ou HH:MM:SS.mmm → segundos desde meia-noite."""
+    p = ts[:8].split(':')
+    return int(p[0]) * 3600 + int(p[1]) * 60 + int(p[2])
+
+def _parse_ts_float(s):
+    """HH:MM:SS.mmm → float (segundos)."""
+    p = s.split(':')
+    return int(p[0]) * 3600 + int(p[1]) * 60 + float(p[2])
+
+
+def _listar_consultas(dt):
+    """Detecta itens consultados/selecionados manualmente no caixa no dia dt."""
+    esp_path = _spy_path(dt)
+    tec_path = _teclas_path(dt)
+    if not esp_path.exists() or not tec_path.exists():
+        return []
+
+    date_str = dt.strftime('%Y-%m-%d')
+
+    # ── 1. Parse Espiao: cupons e VITs ──────────────────────────────────────
+    cupom_ativo = None
+    vits = []
+    for raw in esp_path.read_text(errors='replace').splitlines():
+        raw = raw.strip().rstrip('\r')
+        m = LINE_RE.match(raw)
+        if not m:
+            continue
+        ts, event, body = m.group(1), m.group(2), m.group(3)
+        fields = _parse_fields(body)
+        if event == 'ABRECUPOM':
+            cupom_ativo = {'num': fields.get('Cod',''), 'operador': fields.get('Descricao','')}
+        elif event == 'FECHACUPOM':
+            num = fields.get('Cod', '')
+            if cupom_ativo and cupom_ativo['num'] == num:
+                cupom_ativo = None
+        elif event == 'VIT' and cupom_ativo:
+            try:
+                qty   = float(fields.get('Quant',  '1').replace(',', '.'))
+                vunit = float(fields.get('VlUnit',  '0').replace(',', '.'))
+                vtot  = float(fields.get('VlTotal', '0').replace(',', '.'))
+            except Exception:
+                qty, vunit, vtot = 1.0, 0.0, 0.0
+            vits.append({
+                'timestamp': '%s %s' % (date_str, ts),
+                'time': ts, 'secs': _ts_to_secs(ts),
+                'cupom': cupom_ativo['num'], 'operador': cupom_ativo['operador'],
+                'cod': fields.get('Cod', ''), 'desc': fields.get('Descricao', ''),
+                'desc2': fields.get('Desc2', ''), 'qty': qty,
+                'unit': fields.get('Und', 'Un'), 'vunit': vunit, 'vtotal': vtot,
+                'used': False,
+            })
+
+    if not vits:
+        return []
+
+    # ── 2. Parse Teclas ──────────────────────────────────────────────────────
+    teclas = []
+    for raw in tec_path.read_text(errors='replace').splitlines():
+        raw = raw.strip().rstrip('\r')
+        m = TECLAS_RE.match(raw)
+        if m:
+            teclas.append({
+                'ts_f': m.group(1), 'ts_s': m.group(1)[:8],
+                'key': m.group(2), 'action': m.group(3), 'r': m.group(4),
+            })
+
+    def _find_vit(code, at_secs, max_delta=10):
+        """Encontra VIT mais próximo em time e código."""
+        best, best_d = None, max_delta + 1
+        code_n = code.lstrip('0') or '0'
+        for v in vits:
+            if v['used']:
+                continue
+            d = abs(v['secs'] - at_secs)
+            if d > max_delta:
+                continue
+            cn = v['cod'].lstrip('0') or '0'
+            d2n = v['desc2'].lstrip('0') if v['desc2'] else ''
+            match = (cn == code_n or v['cod'] == code or
+                     (d2n and d2n.startswith(code_n)))
+            if match and d < best_d:
+                best, best_d = v, d
+        if best:
+            return best
+        # fallback: qualquer VIT mais próximo
+        best, best_d = None, max_delta + 1
+        for v in vits:
+            if v['used']:
+                continue
+            d = abs(v['secs'] - at_secs)
+            if d < best_d:
+                best, best_d = v, d
+        return best
+
+    # ── 3. Detectar consultas ────────────────────────────────────────────────
+    consultas, seen = [], set()
+
+    i = 0
+    while i < len(teclas):
+        ev = teclas[i]
+
+        # Tipo 1: K:MENU + A:VIT
+        if ev['key'] == 'MENU' and ev['action'] == 'VIT':
+            codigo = ev['r'].strip()
+            at = _ts_to_secs(ev['ts_s'])
+            vit = _find_vit(codigo, at)
+            if vit:
+                vit['used'] = True
+                key = (vit['cupom'], vit['cod'], vit['time'][:5])
+                if key not in seen:
+                    seen.add(key)
+                    consultas.append({
+                        'date': date_str, 'pdv': PDV_STATION,
+                        'time': vit['time'], 'timestamp': vit['timestamp'],
+                        'cupom': vit['cupom'], 'operador': vit['operador'],
+                        'acao': 'VIT', 'acao_label': 'Item selecionado no menu',
+                        'codigo_consultado': codigo,
+                        'cod': vit['cod'], 'desc': vit['desc'],
+                        'qty': vit['qty'], 'unit': vit['unit'],
+                        'vunit': vit['vunit'], 'vtotal': vit['vtotal'],
+                    })
+            i += 1
+            continue
+
+        # Tipo 2: sequência A:NUM (dígitos simples) + A:CDP
+        if ev['action'] == 'NUM':
+            nums = []
+            j = i
+            while j < len(teclas) and teclas[j]['action'] == 'NUM':
+                nums.append(teclas[j])
+                j += 1
+            if j < len(teclas) and teclas[j]['action'] == 'CDP' and nums:
+                # Só aceita se R: são dígitos simples (teclado manual, não scanner)
+                is_manual = all(len(e['r']) <= 1 and (e['r'] == '' or e['r'].isdigit())
+                                for e in nums)
+                if is_manual:
+                    code = ''.join(e['r'] for e in nums)
+                    duration = 0.0
+                    try:
+                        duration = _parse_ts_float(nums[-1]['ts_f']) - _parse_ts_float(nums[0]['ts_f'])
+                    except Exception:
+                        pass
+                    if len(code) <= 6 or duration >= 0.7:
+                        at = _ts_to_secs(teclas[j]['ts_s'])
+                        vit = _find_vit(code, at)
+                        if vit:
+                            vit['used'] = True
+                            key = (vit['cupom'], vit['cod'], vit['time'][:5])
+                            if key not in seen:
+                                seen.add(key)
+                                consultas.append({
+                                    'date': date_str, 'pdv': PDV_STATION,
+                                    'time': vit['time'], 'timestamp': vit['timestamp'],
+                                    'cupom': vit['cupom'], 'operador': vit['operador'],
+                                    'acao': 'CDP', 'acao_label': 'Código digitado no caixa',
+                                    'codigo_consultado': code,
+                                    'cod': vit['cod'], 'desc': vit['desc'],
+                                    'qty': vit['qty'], 'unit': vit['unit'],
+                                    'vunit': vit['vunit'], 'vtotal': vit['vtotal'],
+                                })
+                i = j + 1
+                continue
+
+        i += 1
+
+    return sorted(consultas, key=lambda x: x['time'])
+
+
 def _listar_cupons(dt):
     """Retorna lista de todos os cupons fechados do dia dt (do spy file)."""
     path = _spy_path(dt)
@@ -309,9 +499,11 @@ def _stream_dvr(start_time, end_time, wfile):
 
     ffmpeg = subprocess.Popen(
         ["ffmpeg", "-y",
-         "-i", "pipe:0", "-t", "95",
-         "-vf", "scale=480:-2", "-c:v", "libx264",
+         "-i", "pipe:0",
+         "-vf", "scale=480:-2",
+         "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1",
          "-preset", "ultrafast", "-crf", "35",
+         "-an",
          "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof",
          "pipe:1"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -359,7 +551,9 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
         print("video_streamer: " + fmt % args, flush=True)
 
     def _check_token(self, params):
-        req_token = params.get("token", [""])[0]
+        auth = self.headers.get("Authorization", "")
+        bearer = auth[len("Bearer "):].strip() if auth.startswith("Bearer ") else ""
+        req_token = bearer or params.get("token", [""])[0]
         if TOKEN and req_token != TOKEN:
             self.send_error(403, "Token invalido")
             return False
@@ -379,6 +573,191 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 self.send_error(404, "Cupom nao encontrado")
                 return
             body = json.dumps(receipt, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # ── /snapshot → extrai 1 frame JPEG do DVR em determinado timestamp
+        # GET /snapshot?ts=YYYY-MM-DD+HH:MM:SS&token=...
+        if path == '/snapshot':
+            if not self._check_token(params): return
+            ts_str = params.get("ts", [""])[0]
+            if not ts_str:
+                self.send_error(400, "ts obrigatorio (YYYY-MM-DD HH:MM:SS)")
+                return
+            try:
+                ts_dt = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                self.send_error(400, "ts invalido")
+                return
+            # Janela de 3s centrada no timestamp (DVR contínuo — cobre emendas de segmento)
+            start = (ts_dt - datetime.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+            end   = (ts_dt + datetime.timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+            dvr_url = (
+                "http://%s/cgi-bin/loadfile.cgi?action=startLoad&channel=%s&startTime=%s&endTime=%s"
+            ) % (HOST, CHANNEL, urllib.parse.quote(start), urllib.parse.quote(end))
+            try:
+                # Pipe: curl DVR | ffmpeg extrai 1 frame JPEG
+                curl = subprocess.Popen(
+                    ["curl", "-s", "--digest", "-u", "%s:%s" % (USER, PASS), dvr_url],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                )
+                ffmpeg = subprocess.Popen(
+                    ["ffmpeg", "-y", "-i", "pipe:0",
+                     "-vframes", "1",
+                     "-q:v", "3", "-f", "image2", "pipe:1"],
+                    stdin=curl.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                )
+                curl.stdout.close()
+                jpeg, _ = ffmpeg.communicate(timeout=15)
+                curl.wait(timeout=3)
+                if ffmpeg.returncode != 0 or not jpeg or jpeg[:2] != b'\xff\xd8':
+                    self.send_error(404, "Sem gravacao para este instante")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Cache-Control", "max-age=3600")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(jpeg)))
+                self.end_headers()
+                self.wfile.write(jpeg)
+            except Exception as e:
+                print("video_streamer: erro snapshot: %s" % e, flush=True)
+                try: curl.kill()
+                except: pass
+                try: ffmpeg.kill()
+                except: pass
+                self.send_error(500, "Erro interno")
+            return
+
+        # ── /clip → gera MP4 completo (arquivo, não stream) — funciona em iOS
+        # GET /clip?start=...&end=...&token=...
+        # GET /clip/{token} → serve o arquivo gerado
+        if path == '/clip' or path.startswith('/clip/'):
+
+            if not self._check_token(params): return
+
+            # Servir arquivo já gerado: /clip/TOKEN
+            if path.startswith('/clip/'):
+                clip_tok = path[6:]
+                _clip_cleanup()
+                with _clip_lock:
+                    entry = _clip_cache.get(clip_tok)
+                if not entry:
+                    self.send_error(404, "Clip expirado ou nao encontrado")
+                    return
+                fpath, _ = entry
+                try:
+                    data = open(fpath, 'rb').read()
+                except Exception:
+                    self.send_error(500, "Erro ao ler clip")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            # Gerar novo clip: /clip?start=...&end=...
+            start_c = params.get("start", [""])[0]
+            end_c   = params.get("end",   [""])[0]
+            if not start_c or not end_c:
+                self.send_error(400, "start e end obrigatorios")
+                return
+
+            # Token baseado nos parâmetros
+            tok = hashlib.md5(("%s|%s" % (start_c, end_c)).encode()).hexdigest()[:16]
+            _clip_cleanup()
+            with _clip_lock:
+                if tok in _clip_cache:
+                    body = json.dumps({"token": tok}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
+            # Baixar DVR e gerar MP4 completo via ffmpeg
+            dvr_url = (
+                "http://%s/cgi-bin/loadfile.cgi?action=startLoad&channel=%s&startTime=%s&endTime=%s"
+            ) % (HOST, CHANNEL, urllib.parse.quote(start_c), urllib.parse.quote(end_c))
+            try:
+                tmp = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+                tmp_path = tmp.name
+                tmp.close()
+
+                # Calcular duração real (start→end), máx 300s
+                try:
+                    fmt = '%Y-%m-%d %H:%M:%S'
+                    dt_s = datetime.datetime.strptime(start_c, fmt)
+                    dt_e = datetime.datetime.strptime(end_c,   fmt)
+                    dur  = max(10, min(1800, int((dt_e - dt_s).total_seconds()) + 5))
+                except Exception:
+                    dur = 120
+
+                # curl DVR → ffmpeg → arquivo mp4
+                curl = subprocess.Popen(
+                    ["curl", "-s", "--digest", "-u", "%s:%s" % (USER, PASS), dvr_url],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                )
+                ffmpeg = subprocess.Popen(
+                    ["ffmpeg", "-y", "-i", "pipe:0",
+                     "-t", str(dur),
+                     "-vf", "scale=360:-2",
+                     "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
+                     "-preset", "ultrafast", "-crf", "38",
+                     "-an",
+                     "-movflags", "+faststart",
+                     tmp_path],
+                    stdin=curl.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                curl.stdout.close()
+                ffmpeg.wait(timeout=dur + 120)
+                curl.wait(timeout=5)
+
+                if ffmpeg.returncode != 0 or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
+                    try: os.unlink(tmp_path)
+                    except: pass
+                    self.send_error(500, "Falha ao gerar clip")
+                    return
+
+                with _clip_lock:
+                    _clip_cache[tok] = (tmp_path, time.time() + CLIP_TTL)
+
+                body = json.dumps({"token": tok}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                print("video_streamer: erro clip: %s" % e, flush=True)
+                self.send_error(500, "Erro interno")
+            return
+
+        # ── /consultas → itens consultados/selecionados manualmente no caixa
+        if path == '/consultas':
+            if not self._check_token(params): return
+            date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
+            try:
+                dt = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                self.send_error(400, "Data invalida")
+                return
+            consultas = _listar_consultas(dt)
+            body = json.dumps({"date": date_str, "consultas": consultas},
+                               ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -496,6 +875,8 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "video/mp4")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Accept-Ranges", "none")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 # DHAV check + stream acontecem DEPOIS dos headers (browser já recebeu 200)
                 start = _ajustar_inicio_dhav(start, end)

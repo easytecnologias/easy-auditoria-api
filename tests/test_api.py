@@ -13,6 +13,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("IMAGES_DIR", str(tmp_path / "images"))
     monkeypatch.setenv("VIDEOS_DIR", str(tmp_path / "videos"))
     monkeypatch.setenv("LOJA_106_TOKEN", "token-teste")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin12345")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
 
     import app as app_module
 
@@ -24,6 +26,15 @@ def client(tmp_path, monkeypatch):
 
 def auth_headers():
     return {"Authorization": "Bearer token-teste"}
+
+
+def login_headers(client):
+    resp = client.post(
+        "/auth/login",
+        json={"email": "admin@easy.local", "senha": "admin12345"},
+    )
+    assert resp.status_code == 200
+    return {"Authorization": f"Bearer {resp.json()['token']}"}
 
 
 def evento_payload(**overrides):
@@ -64,7 +75,7 @@ def test_criar_evento_e_listar_alerta(client):
     resp = client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
     assert resp.status_code == 200
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.status_code == 200
     alerts = resp.json()
     assert len(alerts) == 1
@@ -73,15 +84,15 @@ def test_criar_evento_e_listar_alerta(client):
     assert alerta["severity"] == "critical"
     assert alerta["pdv"] == "PDV 01"
     assert alerta["receipt"] == "221548"
-    assert alerta["event"] == "Produto incompatível"
-    assert alerta["subtitle"] == "Divergência identificada na análise visual"
+    assert alerta["event"] == "Produto incompativel"
+    assert alerta["subtitle"] == "Divergencia identificada na analise visual"
     assert alerta["product"] == "Cafe Marata 250g"
     assert alerta["confidence"] == 94
     assert alerta["state"] == "pending"
-    assert alerta["stateText"] == "Em revisão"
+    assert alerta["stateText"] == "Em revisao"
     assert alerta["qty"] == "1 unidade"
     assert alerta["value"] == "R$ 14,99"
-    assert alerta["result"] == "Não confere"
+    assert alerta["result"] == "Nao confere"
     assert alerta["time"] == "14:32:08"
 
 
@@ -89,7 +100,7 @@ def test_evento_duplicado_e_ignorado(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client))
     assert len(resp.json()) == 1
 
 
@@ -105,7 +116,7 @@ def test_evento_confere_fica_resolvido(client):
     )
     client.post("/api/v1/events", json=payload, headers=auth_headers())
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client))
     alerta = resp.json()[0]
     assert alerta["severity"] == "ok"
     assert alerta["state"] == "resolved"
@@ -130,21 +141,21 @@ def test_filtro_critical_e_resolved(client):
         headers=auth_headers(),
     )
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "critical"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "critical"}, headers=login_headers(client))
     assert len(resp.json()) == 1
     assert resp.json()[0]["severity"] == "critical"
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "resolved"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "resolved"}, headers=login_headers(client))
     assert len(resp.json()) == 1
     assert resp.json()[0]["result"] == "Confere"
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "review"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "filter": "review"}, headers=login_headers(client))
     assert len(resp.json()) == 1
-    assert resp.json()[0]["result"] == "Não confere"
+    assert resp.json()[0]["result"] == "Nao confere"
 
 
 def test_loja_inexistente_retorna_404(client):
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-inexistente"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-inexistente"}, headers=login_headers(client))
     assert resp.status_code == 404
 
 
@@ -156,7 +167,7 @@ def test_health_post_e_get(client):
     resp = client.post("/api/v1/health", json=payload, headers=auth_headers())
     assert resp.status_code == 200
 
-    resp = client.get("/api/v1/health", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/health", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.status_code == 200
     health = resp.json()
     assert len(health) == 2
@@ -170,7 +181,7 @@ def test_health_atualiza_em_vez_de_duplicar(client):
     payload2 = [{"pdv": "01", "bridge": "warning", "imhdx": "online", "audit": "online"}]
     client.post("/api/v1/health", json=payload2, headers=auth_headers())
 
-    resp = client.get("/api/v1/health", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/health", params={"loja": "loja-106"}, headers=login_headers(client))
     health = resp.json()
     assert len(health) == 1
     assert health[0]["bridge"] == "warning"
@@ -178,50 +189,50 @@ def test_health_atualiza_em_vez_de_duplicar(client):
 
 def test_decision_save_e_ignore(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
-    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
+    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"}, headers=login_headers(client))
     assert resp.status_code == 200
     assert resp.json()["status"] == "resolved"
 
-    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"})
+    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"}, headers=login_headers(client))
     assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
 
-    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]
+    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]
     assert alerta["state"] == "resolved"
     assert alerta["stateText"] == "Ignorado"
 
 
 def test_decision_invalida(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
-    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "delete"})
-    assert resp.status_code == 400
+    resp = client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "delete"}, headers=login_headers(client))
+    assert resp.status_code == 422
 
 
 def test_decision_alerta_inexistente(client):
-    resp = client.post("/api/v1/alerts/999/decision", json={"action": "save"})
+    resp = client.post("/api/v1/alerts/999/decision", json={"action": "save"}, headers=login_headers(client))
     assert resp.status_code == 404
 
 
 def test_evento_tem_image_url(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]
+    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]
     assert alerta["imageUrl"] == f"/api/v1/events/{alerta['id']}/image"
 
 
 def test_imagem_inexistente_retorna_404(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
-    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
+    resp = client.get(f"/api/v1/events/{alerta_id}/image", headers=login_headers(client))
     assert resp.status_code == 404
 
 
 def test_upload_e_obtencao_de_imagem(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     resp = client.post(
         f"/api/v1/events/{alerta_id}/image",
@@ -230,14 +241,14 @@ def test_upload_e_obtencao_de_imagem(client):
     )
     assert resp.status_code == 200
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    resp = client.get(f"/api/v1/events/{alerta_id}/image", headers=login_headers(client))
     assert resp.status_code == 200
     assert resp.content == b"fake-jpg-bytes"
 
 
 def test_upload_imagem_sem_token_e_rejeitado(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     resp = client.post(
         f"/api/v1/events/{alerta_id}/image",
@@ -248,50 +259,50 @@ def test_upload_imagem_sem_token_e_rejeitado(client):
 
 def test_decision_ignore_apaga_imagem(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     client.post(
         f"/api/v1/events/{alerta_id}/image",
         files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
         headers=auth_headers(),
     )
-    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"})
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"}, headers=login_headers(client))
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    resp = client.get(f"/api/v1/events/{alerta_id}/image", headers=login_headers(client))
     assert resp.status_code == 404
 
 
 def test_decision_save_mantem_imagem(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     client.post(
         f"/api/v1/events/{alerta_id}/image",
         files={"file": ("foto.jpg", b"fake-jpg-bytes", "image/jpeg")},
         headers=auth_headers(),
     )
-    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"}, headers=login_headers(client))
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/image")
+    resp = client.get(f"/api/v1/events/{alerta_id}/image", headers=login_headers(client))
     assert resp.status_code == 200
 
 
 def test_evento_tem_video_url(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]
+    alerta = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]
     assert alerta["videoUrl"] == f"/api/v1/events/{alerta['id']}/video"
 
 
 def test_video_inexistente_retorna_404(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
-    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
+    resp = client.get(f"/api/v1/events/{alerta_id}/video", headers=login_headers(client))
     assert resp.status_code == 404
 
 
 def test_upload_e_obtencao_de_video(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     resp = client.post(
         f"/api/v1/events/{alerta_id}/video",
@@ -300,14 +311,14 @@ def test_upload_e_obtencao_de_video(client):
     )
     assert resp.status_code == 200
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    resp = client.get(f"/api/v1/events/{alerta_id}/video", headers=login_headers(client))
     assert resp.status_code == 200
     assert resp.content == b"fake-mp4-bytes"
 
 
 def test_upload_video_sem_token_e_rejeitado(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     resp = client.post(
         f"/api/v1/events/{alerta_id}/video",
@@ -318,21 +329,21 @@ def test_upload_video_sem_token_e_rejeitado(client):
 
 def test_decision_ignore_apaga_video(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     client.post(
         f"/api/v1/events/{alerta_id}/video",
         files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
         headers=auth_headers(),
     )
-    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"})
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "ignore"}, headers=login_headers(client))
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    resp = client.get(f"/api/v1/events/{alerta_id}/video", headers=login_headers(client))
     assert resp.status_code == 404
 
 
 def test_vendas_sem_dados_retorna_zero(client):
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.status_code == 200
     assert resp.json() == {"total": 0, "cupons": 0}
 
@@ -350,7 +361,7 @@ def test_vendas_post_e_get(client):
     )
     assert resp.status_code == 200
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.json() == {"total": 1234.5, "cupons": 10}
 
 
@@ -358,7 +369,7 @@ def test_vendas_atualiza_em_vez_de_somar_por_pdv(client):
     client.post("/api/v1/sales", json={"pdv": "01", "total": 100.0, "cupons": 1}, headers=auth_headers())
     client.post("/api/v1/sales", json={"pdv": "01", "total": 250.0, "cupons": 3}, headers=auth_headers())
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.json() == {"total": 250.0, "cupons": 3}
 
 
@@ -366,12 +377,12 @@ def test_vendas_soma_varios_pdvs(client):
     client.post("/api/v1/sales", json={"pdv": "01", "total": 100.0, "cupons": 1}, headers=auth_headers())
     client.post("/api/v1/sales", json={"pdv": "02", "total": 50.0, "cupons": 2}, headers=auth_headers())
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106"}, headers=login_headers(client))
     assert resp.json() == {"total": 150.0, "cupons": 3}
 
 
 def test_loja_inexistente_em_vendas_retorna_404(client):
-    resp = client.get("/api/v1/sales", params={"loja": "loja-inexistente"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-inexistente"}, headers=login_headers(client))
     assert resp.status_code == 404
 
 
@@ -387,20 +398,20 @@ def test_vendas_por_data_especifica(client):
         headers=auth_headers(),
     )
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-09"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-09"}, headers=login_headers(client))
     assert resp.json() == {"total": 100.0, "cupons": 5}
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10"}, headers=login_headers(client))
     assert resp.json() == {"total": 200.0, "cupons": 8}
 
 
 def test_alertas_filtra_por_data(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-10"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-10"}, headers=login_headers(client))
     assert len(resp.json()) == 1
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-09"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "data": "2026-06-09"}, headers=login_headers(client))
     assert resp.json() == []
 
 
@@ -412,14 +423,14 @@ def test_alertas_filtra_por_pdv(client):
         headers=auth_headers(),
     )
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "01"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "01"}, headers=login_headers(client))
     assert len(resp.json()) == 1
     assert resp.json()[0]["pdv"] == "PDV 01"
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": ["01", "02"]})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": ["01", "02"]}, headers=login_headers(client))
     assert len(resp.json()) == 2
 
-    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "03"})
+    resp = client.get("/api/v1/alerts", params={"loja": "loja-106", "pdv": "03"}, headers=login_headers(client))
     assert resp.json() == []
 
 
@@ -435,23 +446,23 @@ def test_vendas_filtra_por_pdv(client):
         headers=auth_headers(),
     )
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": "01"})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": "01"}, headers=login_headers(client))
     assert resp.json() == {"total": 100.0, "cupons": 5}
 
-    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": ["01", "02"]})
+    resp = client.get("/api/v1/sales", params={"loja": "loja-106", "data": "2026-06-10", "pdv": ["01", "02"]}, headers=login_headers(client))
     assert resp.json() == {"total": 150.0, "cupons": 7}
 
 
 def test_decision_save_mantem_video(client):
     client.post("/api/v1/events", json=evento_payload(), headers=auth_headers())
-    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}).json()[0]["id"]
+    alerta_id = client.get("/api/v1/alerts", params={"loja": "loja-106"}, headers=login_headers(client)).json()[0]["id"]
 
     client.post(
         f"/api/v1/events/{alerta_id}/video",
         files={"file": ("evento.mp4", b"fake-mp4-bytes", "video/mp4")},
         headers=auth_headers(),
     )
-    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"})
+    client.post(f"/api/v1/alerts/{alerta_id}/decision", json={"action": "save"}, headers=login_headers(client))
 
-    resp = client.get(f"/api/v1/events/{alerta_id}/video")
+    resp = client.get(f"/api/v1/events/{alerta_id}/video", headers=login_headers(client))
     assert resp.status_code == 200

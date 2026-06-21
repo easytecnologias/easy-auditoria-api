@@ -7,12 +7,11 @@ Type=simple
 Restart=always
 RestartSec=5
 EnvironmentFile=/etc/pdv-telegram-assistant.env
+EnvironmentFile=-/etc/pdv-video-streamer.env
 Environment=IMHDX_HOST=192.168.24.227
 Environment=IMHDX_USER=admin
-Environment=IMHDX_PASS=Vitalcam2025@
 Environment=IMHDX_CHANNEL=1
 Environment=VIDEO_STREAMER_PORT=8765
-EnvironmentFile=-/etc/pdv-video-streamer.env
 ExecStart=/usr/bin/python3.8 /opt/pdv-visual-auditor/video_streamer.py
 
 [Install]

@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=26">
+  <script>if ('scrollRestoration' in history) history.scrollRestoration = 'manual';</script>
   <style>
     .video-simulation #eventVideo {
       width: 100%;
@@ -71,8 +72,11 @@
             <button class="nav-item nav-sub-item" data-view="receipts">
               <i data-lucide="receipt-text"></i><span>Cupons</span>
             </button>
+            <button class="nav-item nav-sub-item" data-view="consultar">
+              <i data-lucide="search"></i><span>Consultar</span>
+            </button>
             <button class="nav-item nav-sub-item" data-view="terminals">
-              <i data-lucide="scan-barcode"></i><span>Consulta VAR</span>
+              <i data-lucide="scan-barcode"></i><span>PDV VAR</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="alerts">
               <i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b>
@@ -100,6 +104,9 @@
             </button>
           </div>
         </div>
+        <button class="nav-item" id="sidebarLogoutBtn" style="width:100%;justify-content:flex-start;gap:10px;color:#c92a2a">
+          <i data-lucide="log-out"></i><span>Sair</span>
+        </button>
         <div class="environment">
           <span class="status-dot online"></span>
           Produção
@@ -332,6 +339,105 @@
 
       </section>
 
+      <!-- View: Consultar -->
+      <section class="workspace" id="viewConsultar" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Operação</p>
+            <h1>Consultar PDV 001</h1>
+            <p>Itens consultados e selecionados manualmente no caixa.</p>
+          </div>
+        </div>
+
+        <!-- Filtros — idêntico ao padrão Cupons -->
+        <div class="cupons-filtros">
+          <div class="cupons-datas">
+            <button class="period-button cupons-quick consultar-quick active" data-days="0">Hoje</button>
+            <button class="period-button cupons-quick consultar-quick" data-days="1">Ontem</button>
+            <button class="period-button cupons-quick consultar-quick" data-days="2">Anteontem</button>
+            <input type="date" id="consultarDataInput" class="cupons-select" style="cursor:pointer">
+          </div>
+          <div class="cupons-filtros-linha">
+            <label class="search-box" style="flex:1"><i data-lucide="search"></i>
+              <input id="consultarSearch" placeholder="Buscar produto ou operador…">
+            </label>
+            <select id="consultarOperadorFilter" class="cupons-select">
+              <option value="">Todos os operadores</option>
+            </select>
+            <select id="consultarPeriodoFilter" class="cupons-select">
+              <option value="">Todo o dia</option>
+              <option value="manha">Manhã (06–12h)</option>
+              <option value="tarde">Tarde (12–18h)</option>
+              <option value="noite">Noite (18–23h)</option>
+            </select>
+            <button class="secondary-action" id="btnConsultarRefresh"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="consultarLoading" style="display:none;padding:40px;text-align:center;color:var(--muted)">
+          <i data-lucide="loader-circle" style="animation:spin 1s linear infinite;width:24px;height:24px"></i>
+          <p style="margin-top:8px">Carregando…</p>
+        </div>
+
+        <!-- Tabela — mesmo padrão da tela Cupons -->
+        <div class="alerts-panel" style="margin-top:0">
+          <div id="consultarTabelaConsultas" class="cupons-table-wrap">
+            <table class="cupons-table">
+              <colgroup>
+                <col style="width:8%">
+                <col style="width:10%">
+                <col style="width:42%">
+                <col style="width:10%">
+                <col style="width:14%">
+                <col style="width:16%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Horário</th>
+                  <th>Cupom</th>
+                  <th>Produto consultado</th>
+                  <th>Qtd.</th>
+                  <th style="text-align:right">Valor</th>
+                  <th style="text-align:right"></th>
+                </tr>
+              </thead>
+              <tbody id="consultarConsultasBody"></tbody>
+            </table>
+            <div id="consultarConsultasEmpty" style="display:none;padding:40px;text-align:center;color:var(--muted)">
+              Nenhuma consulta encontrada para esta data.
+            </div>
+          </div>
+          <div class="paginacao" id="consultarPaginacao" style="display:none">
+            <span id="consultarPaginacaoInfo"></span>
+            <div class="paginacao-btns" id="consultarPaginacaoBtns"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Modal vídeo de consulta -->
+      <div id="consultaVideoModal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);display:none">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border-radius:12px;width:min(680px,96vw);max-height:90vh;overflow-y:auto;padding:24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div>
+              <p style="font-size:11px;color:var(--muted);margin:0" id="cvmBreadcrumb">PDV 01</p>
+              <h2 style="margin:0;font-size:18px" id="cvmTitle">Item consultado</h2>
+              <p style="margin:4px 0 0;font-size:13px;color:var(--muted)" id="cvmDesc"></p>
+            </div>
+            <button onclick="fecharConsultaVideoModal()" style="background:none;border:none;cursor:pointer;padding:4px"><i data-lucide="x" style="width:20px;height:20px"></i></button>
+          </div>
+          <div id="cvmLoading" style="text-align:center;padding:40px;color:var(--muted)">
+            <i data-lucide="loader-circle" style="animation:spin 1s linear infinite;width:32px;height:32px"></i>
+            <p style="margin-top:8px">Carregando vídeo…</p>
+          </div>
+          <video id="cvmVideo" controls playsinline webkit-playsinline style="width:100%;border-radius:8px;display:none;background:#000"></video>
+          <div id="cvmErro" style="display:none;text-align:center;padding:24px">
+            <p style="color:var(--muted)">Não foi possível carregar o vídeo.</p>
+            <button class="primary-action" onclick="cvmTentarNovamente()" style="margin-top:8px">Tentar novamente</button>
+          </div>
+        </div>
+      </div>
+
       <!-- View: Cupons (lista do dia) -->
       <section class="workspace" id="viewReceipts" style="display:none">
         <div class="page-heading">
@@ -391,6 +497,10 @@
                 <tr class="empty-row"><td colspan="6">Selecione uma data para carregar os cupons.</td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="paginacao" id="cuponsPaginacao" style="display:none">
+            <span id="cuponsPaginacaoInfo"></span>
+            <div class="paginacao-btns" id="cuponsPaginacaoBtns"></div>
           </div>
           <div class="table-footer"><span id="cuponsFooter">—</span></div>
         </div>
@@ -583,7 +693,7 @@
     <div class="video-modal">
       <div class="modal-header"><div><p class="eyebrow">Gravação POS · iMHDX</p><h2>Vídeo do evento</h2></div><button id="closeVideo" class="icon-button"><i data-lucide="x"></i></button></div>
       <div class="video-simulation">
-        <video id="eventVideo" controls preload="metadata"></video>
+        <video id="eventVideo" controls playsinline webkit-playsinline preload="metadata"></video>
         <div id="videoUnavailable" class="video-unavailable" hidden>Vídeo não disponível para este evento.</div>
         <div class="video-meta"><span id="videoMeta">PDV 01 · Cupom 221548</span></div>
       </div>
