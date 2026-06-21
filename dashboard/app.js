@@ -155,6 +155,13 @@ async function carregarAlertas() {
   renderAlerts();
   renderAlertMetrics();
   renderOccurrenceTypes();
+  // Atualizar view Alertas se estiver aberta
+  if (document.getElementById("viewAlerts")?.style.display !== "none") {
+    const dateInp = document.getElementById("alertsDateInput");
+    if (dateInp) dateInp.value = selectedDate;
+    _syncAlertDateBtns?.();
+    renderAlertas2?.();
+  }
 }
 
 async function carregarHealth() {
@@ -414,35 +421,47 @@ const PANEL_HEIGHT = 520;
 
 function aplicarEvidencia(imageUrl) {
   const frameButtons = document.querySelectorAll(".frame-strip button");
-  const img = new Image();
-  img.onload = () => {
-    const numPanels = Math.max(1, Math.round(img.naturalWidth / PANEL_WIDTH));
-    const panelUrls = [];
-    for (let i = 0; i < numPanels; i++) {
-      const canvas = document.createElement("canvas");
-      canvas.width = PANEL_WIDTH;
-      canvas.height = PANEL_HEIGHT;
-      canvas.getContext("2d").drawImage(
-        img, i * PANEL_WIDTH, 0, PANEL_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_WIDTH, PANEL_HEIGHT
-      );
-      panelUrls.push(canvas.toDataURL("image/jpeg"));
-    }
-    frameButtons.forEach((button, index) => {
-      button.dataset.frame = panelUrls[Math.min(index, numPanels - 1)];
-    });
-    document.querySelectorAll(".frame-strip button").forEach(item => item.classList.remove("active"));
-    const registerButton = frameButtons[1] || frameButtons[0];
-    registerButton.classList.add("active");
-    document.getElementById("mainEvidence").src = registerButton.dataset.frame;
-  };
-  img.onerror = () => {
-    document.getElementById("mainEvidence").src = FRAME_FALLBACKS.register;
-    frameButtons.forEach((button, index) => {
-      const frame = index === 0 ? "before" : index === 2 ? "after" : "register";
-      button.dataset.frame = FRAME_FALLBACKS[frame];
-    });
-  };
-  img.src = imageUrl;
+
+  function _renderFrames(src) {
+    const img = new Image();
+    img.onload = () => {
+      const numPanels = Math.max(1, Math.round(img.naturalWidth / PANEL_WIDTH));
+      const panelUrls = [];
+      for (let i = 0; i < numPanels; i++) {
+        const canvas = document.createElement("canvas");
+        canvas.width = PANEL_WIDTH;
+        canvas.height = PANEL_HEIGHT;
+        canvas.getContext("2d").drawImage(
+          img, i * PANEL_WIDTH, 0, PANEL_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_WIDTH, PANEL_HEIGHT
+        );
+        panelUrls.push(canvas.toDataURL("image/jpeg"));
+      }
+      frameButtons.forEach((button, index) => {
+        button.dataset.frame = panelUrls[Math.min(index, numPanels - 1)];
+      });
+      document.querySelectorAll(".frame-strip button").forEach(item => item.classList.remove("active"));
+      const registerButton = frameButtons[1] || frameButtons[0];
+      registerButton.classList.add("active");
+      document.getElementById("mainEvidence").src = registerButton.dataset.frame;
+    };
+    img.onerror = () => {
+      document.getElementById("mainEvidence").src = FRAME_FALLBACKS.register;
+      frameButtons.forEach((button, index) => {
+        const frame = index === 0 ? "before" : index === 2 ? "after" : "register";
+        button.dataset.frame = FRAME_FALLBACKS[frame];
+      });
+    };
+    img.src = src;
+  }
+
+  if (!imageUrl) {
+    _renderFrames(FRAME_FALLBACKS.register);
+    return;
+  }
+  // URLs protegidas precisam de Bearer token — buscar via fetch e criar blob URL
+  mediaObjectUrl(imageUrl)
+    .then(blobUrl => _renderFrames(blobUrl))
+    .catch(() => _renderFrames(FRAME_FALLBACKS.register));
 }
 
 function openDrawer(alert) {
@@ -504,8 +523,13 @@ function openVideo() {
     video.hidden = true;
     unavailable.hidden = false;
   };
-  video.src = selectedAlert.videoUrl;
-  video.load();
+  if (!selectedAlert.videoUrl) {
+    video.hidden = true; unavailable.hidden = false; return;
+  }
+  // Buscar vídeo com auth e criar blob URL (resolve URLs protegidas)
+  mediaObjectUrl(selectedAlert.videoUrl)
+    .then(blobUrl => { video.src = blobUrl; video.load(); video.play().catch(() => {}); })
+    .catch(() => { video.hidden = true; unavailable.hidden = false; });
 }
 
 function resetVideo() {
@@ -583,7 +607,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar"];
+const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -599,7 +623,8 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
                    (id === "viewPdvs" && view === "pdvs") ||
                    (id === "viewPdvCards" && view === "terminals") ||
                    (id === "viewReceipts" && view === "receipts") ||
-                   (id === "viewConsultar" && view === "consultar");
+                   (id === "viewConsultar" && view === "consultar") ||
+                   (id === "viewAlerts" && view === "alerts");
       if (el) el.style.display = show ? "" : "none";
       if (show) isSubView = true;
     });
@@ -609,6 +634,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     else if (view === "terminals") carregarCardsPdv();
     else if (view === "receipts") iniciarViewCupons();
     else if (view === "consultar") iniciarViewConsultar();
+    else if (view === "alerts") iniciarViewAlertas();
     else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
       showToast("Tela incluída na próxima etapa do protótipo.");
     }
@@ -2030,6 +2056,124 @@ document.getElementById("formPdv").addEventListener("submit", async (e) => {
     }
   });
 })();
+
+let activeFilter2 = "all";
+let _alertsPagAtual = 1;
+
+function iniciarViewAlertas() {
+  _alertsPagAtual = 1;
+
+  // Sincronizar input de data com selectedDate atual
+  const dateInp = document.getElementById("alertsDateInput");
+  if (dateInp) {
+    dateInp.value = selectedDate;
+    dateInp.max = formatDateInput(new Date());
+  }
+  // Marcar botão Hoje/Ontem/Anteontem correto
+  _syncAlertDateBtns();
+  renderAlertas2();
+
+  // Botões de data rápida
+  document.querySelectorAll(".alerts2-date").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const d = new Date();
+      d.setDate(d.getDate() - parseInt(btn.dataset.days || "0"));
+      selectedDate = formatDateInput(d);
+      if (dateInp) dateInp.value = selectedDate;
+      _syncAlertDateBtns();
+      _alertsPagAtual = 1;
+      carregarAlertas();
+    });
+  });
+
+  // Input de data manual
+  if (dateInp) {
+    dateInp.addEventListener("change", () => {
+      if (!dateInp.value) return;
+      selectedDate = dateInp.value;
+      document.querySelectorAll(".alerts2-date").forEach(b => b.classList.remove("active"));
+      _alertsPagAtual = 1;
+      carregarAlertas();
+    });
+  }
+
+  document.getElementById("searchInput2")?.addEventListener("input", () => { _alertsPagAtual = 1; renderAlertas2(); });
+  document.getElementById("btnAlertsRefresh")?.addEventListener("click", () => {
+    carregarAlertas();
+  });
+  document.querySelectorAll(".alerts2-filter").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".alerts2-filter").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeFilter2 = btn.dataset.filter || "all";
+      _alertsPagAtual = 1;
+      renderAlertas2();
+    });
+  });
+}
+
+function _syncAlertDateBtns() {
+  document.querySelectorAll(".alerts2-date").forEach(btn => {
+    const d = new Date();
+    d.setDate(d.getDate() - parseInt(btn.dataset.days || "0"));
+    btn.classList.toggle("active", formatDateInput(d) === selectedDate);
+  });
+}
+
+function renderAlertas2() {
+  const query = (document.getElementById("searchInput2")?.value || "").toLowerCase();
+  const table2 = document.getElementById("alertsTable2");
+  if (!table2) return;
+
+  // Atualizar badges
+  document.getElementById("countAll2").textContent = alerts.length;
+  document.getElementById("countCritical2").textContent = alerts.filter(a => a.severity === "critical").length;
+  document.getElementById("countReview2").textContent = alerts.filter(a => a.state !== "resolved").length;
+  document.getElementById("countResolved2").textContent = alerts.filter(a => a.state === "resolved").length;
+
+  const filtrados = alerts.filter(a => {
+    const filterMatch = activeFilter2 === "all"
+      || (activeFilter2 === "critical" && a.severity === "critical")
+      || (activeFilter2 === "review" && a.state !== "resolved")
+      || (activeFilter2 === "resolved" && a.state === "resolved");
+    const text = `${a.pdv} ${a.receipt} ${a.product} ${a.event}`.toLowerCase();
+    return filterMatch && text.includes(query);
+  });
+
+  if (!filtrados.length) {
+    table2.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Nenhum alerta encontrado.</td></tr>`;
+    document.getElementById("alertsPaginacao").style.display = "none";
+    return;
+  }
+
+  const pagSlice = filtrados.slice((_alertsPagAtual - 1) * POR_PAGINA, _alertsPagAtual * POR_PAGINA);
+
+  table2.innerHTML = pagSlice.map(alert => `
+    <tr class="cupons-row" data-id="${alert.id}">
+      <td><span class="severity ${alert.severity}"><i></i>${alert.severity === "critical" ? "Crítico" : alert.severity === "warning" ? "Atenção" : "Normal"}</span></td>
+      <td>${alert.time}</td>
+      <td class="receipt-cell"><strong>${alert.pdv}</strong><span>Cupom ${alert.receipt}</span></td>
+      <td><div class="event-cell"><img class="mini-cctv" src="${alert.imageUrl || 'assets/frame-register.svg'}" ${alert.imageUrl ? `loading="lazy" onerror="this.src='assets/frame-register.svg';this.onerror=null"` : ''} alt=""><div><strong>${alert.event}</strong><span>${alert.subtitle}</span></div></div></td>
+      <td class="product-cell"><strong>${alert.product}</strong><span>${alert.qty} · ${alert.value}</span></td>
+      <td><div class="confidence"><span>${alert.confidence}%</span><i class="confidence-meter"><i style="width:${alert.confidence}%"></i></i></div></td>
+      <td><span class="state-badge ${alert.state}">${alert.stateText}</span></td>
+      <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
+    </tr>`).join("");
+
+  table2.querySelectorAll("tr").forEach(row => {
+    row.addEventListener("click", event => {
+      const a = alerts.find(x => x.id === Number(row.dataset.id));
+      if (!a) return;
+      if (event.target.closest("[data-action='video']")) { selectedAlert = a; openVideo(); }
+      else { openDrawer(a); }
+    });
+  });
+
+  hydrateProtectedMedia(table2);
+  lucide.createIcons();
+  _renderPaginacao("alertsPaginacaoInfo","alertsPaginacaoBtns","alertsPaginacao",
+    _alertsPagAtual, filtrados.length, p => { _alertsPagAtual = p; renderAlertas2(); });
+}
 
 function iniciarApp() {
   atualizarRotuloData();

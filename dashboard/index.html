@@ -69,14 +69,14 @@
             <i data-lucide="chevron-right" class="nav-chevron"></i>
           </button>
           <div class="nav-sub" id="navPdvSub">
+            <button class="nav-item nav-sub-item" data-view="terminals">
+              <i data-lucide="scan-barcode"></i><span>PDV VAR</span>
+            </button>
             <button class="nav-item nav-sub-item" data-view="receipts">
               <i data-lucide="receipt-text"></i><span>Cupons</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="consultar">
               <i data-lucide="search"></i><span>Consultar</span>
-            </button>
-            <button class="nav-item nav-sub-item" data-view="terminals">
-              <i data-lucide="scan-barcode"></i><span>PDV VAR</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="alerts">
               <i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b>
@@ -287,6 +287,64 @@
               </thead>
               <tbody id="usuariosTable"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- View: Alertas (tabela dedicada) -->
+      <section class="workspace" id="viewAlerts" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Operação</p>
+            <h1>Alertas</h1>
+            <p>Eventos priorizados para revisão do supervisor.</p>
+          </div>
+        </div>
+
+        <!-- Filtros — mesmo padrão Cupons/Consultar -->
+        <div class="cupons-filtros">
+          <div class="cupons-datas">
+            <button class="period-button cupons-quick alerts2-date active" data-days="0">Hoje</button>
+            <button class="period-button cupons-quick alerts2-date" data-days="1">Ontem</button>
+            <button class="period-button cupons-quick alerts2-date" data-days="2">Anteontem</button>
+            <input type="date" id="alertsDateInput" class="cupons-select" style="cursor:pointer">
+          </div>
+          <div class="cupons-filtros-linha">
+            <div class="cupons-datas" style="flex-wrap:nowrap;gap:4px">
+              <button class="period-button alerts2-filter active" data-filter="all">Todos <span id="countAll2">0</span></button>
+              <button class="period-button alerts2-filter" data-filter="critical">Críticos <span id="countCritical2">0</span></button>
+              <button class="period-button alerts2-filter" data-filter="review">Em revisão <span id="countReview2">0</span></button>
+              <button class="period-button alerts2-filter" data-filter="resolved">Resolvidos <span id="countResolved2">0</span></button>
+            </div>
+            <label class="search-box" style="flex:1;min-width:160px"><i data-lucide="search"></i>
+              <input id="searchInput2" placeholder="Cupom, produto ou PDV">
+            </label>
+            <button class="secondary-action" id="btnAlertsRefresh"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+
+        <!-- Tabela — mesmo padrão Cupons/Consultar -->
+        <div class="alerts-panel" style="margin-top:0">
+          <div class="cupons-table-wrap">
+            <table class="alerts-table cupons-table" style="min-width:700px">
+              <thead>
+                <tr>
+                  <th>Severidade</th>
+                  <th>Horário</th>
+                  <th>PDV / Cupom</th>
+                  <th>Evento</th>
+                  <th>Produto registrado</th>
+                  <th>Confiança</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="alertsTable2"></tbody>
+            </table>
+          </div>
+          <div class="paginacao" id="alertsPaginacao" style="display:none">
+            <span id="alertsPaginacaoInfo"></span>
+            <div class="paginacao-btns" id="alertsPaginacaoBtns"></div>
           </div>
         </div>
       </section>
