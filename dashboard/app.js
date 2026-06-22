@@ -724,15 +724,25 @@ document.getElementById("lojaFilterButton").addEventListener("click", async () =
     if (r.ok) {
       const lojas = await r.json();
       const nomeEl = document.getElementById("topbarLojaNome");
-      lista.innerHTML = lojas.map(l =>
-        `<label><input type="radio" name="lojaRadio" value="${l.id}" ${LOJA===l.id?"checked":""}> ${l.nome}</label>`
-      ).join("") || `<label style="color:var(--muted);pointer-events:none">Nenhuma loja cadastrada</label>`;
+      const todasChecked = !LOJA || lojas.every(l => l.id !== LOJA);
+      lista.innerHTML =
+        `<label><input type="radio" name="lojaRadio" value="" ${todasChecked?"checked":""}> Todas as lojas</label>` +
+        `<hr>` +
+        (lojas.map(l =>
+          `<label><input type="radio" name="lojaRadio" value="${l.id}" ${LOJA===l.id?"checked":""}> ${l.nome}</label>`
+        ).join("") || `<label style="color:var(--muted);pointer-events:none">Nenhuma loja cadastrada</label>`);
+      if (todasChecked && nomeEl) nomeEl.textContent = "Todas as lojas";
       lista.querySelectorAll("input[name=lojaRadio]").forEach(inp => {
         inp.addEventListener("change", () => {
-          const loja = lojas.find(l => l.id === inp.value);
-          LOJA = inp.value;
-          if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
-          lista.innerHTML = ""; // limpa para recarregar marcador na próxima abertura
+          if (inp.value === "") {
+            LOJA = lojas.length > 0 ? lojas[0].id : (LOJA || "");
+            if (nomeEl) nomeEl.textContent = "Todas as lojas";
+          } else {
+            const loja = lojas.find(l => l.id === inp.value);
+            LOJA = inp.value;
+            if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
+          }
+          lista.innerHTML = "";
           menu.classList.remove("open");
           carregarAlertas(); carregarVendas(); carregarHealth();
         });
