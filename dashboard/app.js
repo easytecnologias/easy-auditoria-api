@@ -2209,6 +2209,16 @@ async function carregarStatsIA() {
     if (minMax && d.min_s && d.max_s) {
       minMax.textContent = `mín ${d.min_s}s · máx ${d.max_s}s`;
     }
+    const elFila = document.getElementById("metricIAFila");
+    const detFila = document.getElementById("metricIAFilaDetalhe");
+    if (elFila) elFila.textContent = d.fila ?? 0;
+    if (detFila) {
+      const analisados = d.total || 0;
+      const fila = d.fila || 0;
+      detFila.textContent = fila > 0
+        ? `${fila} aguardando · ${analisados} analisados`
+        : `fila vazia · ${analisados} analisados`;
+    }
   } catch(e) {}
 }
 
