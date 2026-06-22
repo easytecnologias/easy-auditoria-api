@@ -55,23 +55,61 @@ function mostrarApp(usuario) {
   if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
     document.getElementById("navUsuarios").style.display = "";
   }
-  // Nome da loja no topo
-  const lojaEl = document.getElementById("topbarLojaNome");
-  if (lojaEl) {
-    if (usuario.loja_id) {
-      // Buscar nome da loja
-      apiFetch("/api/v1/lojas").then(r => r.ok ? r.json() : []).then(lojas => {
-        const loja = lojas.find(l => l.id === usuario.loja_id);
-        if (lojaEl) lojaEl.textContent = loja ? loja.nome : usuario.loja_id;
-      }).catch(() => { if (lojaEl) lojaEl.textContent = usuario.loja_id; });
-    } else {
-      lojaEl.textContent = "Todas as lojas";
-    }
-  }
+  // Carregar seletor de loja no topo
+  _carregarSeletorLoja(usuario);
   if (usuario.perfil === "admin") {
     document.getElementById("navLojas").style.display = "";
   }
   lucide.createIcons();
+}
+
+async function _carregarSeletorLoja(usuario) {
+  const nomeEl = document.getElementById("topbarLojaNome");
+  const lista  = document.getElementById("lojaFilterList");
+  if (!nomeEl || !lista) return;
+
+  // Admin vê todas as lojas; outros só a sua
+  let lojas = [];
+  if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
+    const r = await apiFetch("/api/v1/lojas");
+    if (r.ok) lojas = await r.json();
+  }
+
+  // Definir loja inicial
+  if (usuario.loja_id) {
+    const mine = lojas.find(l => l.id === usuario.loja_id);
+    nomeEl.textContent = mine ? mine.nome : usuario.loja_id;
+    LOJA = usuario.loja_id;
+  } else {
+    nomeEl.textContent = lojas.length === 1 ? lojas[0].nome : "Todas as lojas";
+    if (lojas.length === 1) LOJA = lojas[0].id;
+  }
+
+  // Montar lista do dropdown
+  if (lojas.length <= 1) {
+    // Sem dropdown se só tem 1 loja ou nenhuma
+    document.getElementById("lojaFilterButton").style.cursor = "default";
+    return;
+  }
+
+  lista.innerHTML = lojas.map(l => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:13px;cursor:pointer;border-radius:6px">
+      <input type="radio" name="lojaFilter" value="${l.id}" ${LOJA === l.id ? "checked" : ""}>
+      ${l.nome}
+    </label>`).join("");
+
+  lista.querySelectorAll("input[name=lojaFilter]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const loja = lojas.find(l => l.id === inp.value);
+      LOJA = inp.value;
+      nomeEl.textContent = loja ? loja.nome : inp.value;
+      document.getElementById("lojaFilterMenu").classList.remove("open");
+      // Atualizar dados do dashboard
+      carregarAlertas();
+      carregarVendas();
+      carregarHealth();
+    });
+  });
 }
 
 async function verificarAuth() {
@@ -704,6 +742,15 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
       showToast("Tela incluída na próxima etapa do protótipo.");
     }
   });
+});
+
+document.getElementById("lojaFilterButton").addEventListener("click", () => {
+  document.getElementById("lojaFilterMenu").classList.toggle("open");
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest(".store-selector")) {
+    document.getElementById("lojaFilterMenu")?.classList.remove("open");
+  }
 });
 
 document.getElementById("pdvFilterButton").addEventListener("click", () => {

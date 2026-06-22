@@ -117,9 +117,12 @@
     <main class="main-area">
       <header class="topbar">
         <button class="icon-button mobile-menu" aria-label="Abrir menu"><i data-lucide="menu"></i></button>
-        <div class="store-selector">
+        <div class="store-selector" style="position:relative">
           <span>Operação</span>
-          <button><span id="topbarLojaNome">—</span> <i data-lucide="chevron-down"></i></button>
+          <button id="lojaFilterButton"><span id="topbarLojaNome">—</span> <i data-lucide="chevron-down"></i></button>
+          <div class="pdv-filter-menu" id="lojaFilterMenu" style="min-width:200px">
+            <div id="lojaFilterList"></div>
+          </div>
         </div>
         <div class="topbar-actions">
           <div class="pdv-filter">
