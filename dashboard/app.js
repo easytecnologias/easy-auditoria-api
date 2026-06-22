@@ -1838,11 +1838,7 @@ async function carregarPdvs() {
   lucide.createIcons();
 }
 
-function mostrarTokenRevelado(token) {
-  document.getElementById("tokenRevelado").textContent = token;
-  document.getElementById("modalToken").style.display = "flex";
-  lucide.createIcons();
-}
+function mostrarTokenRevelado(token) { mostrarToken(token, false); }
 
 function abrirModalPdv(pdv = null) {
   pdvEditandoId = pdv ? pdv.id : null;
@@ -1863,14 +1859,6 @@ function fecharModalPdv() { document.getElementById("modalPdv").style.display = 
 document.getElementById("btnNovoPdv").addEventListener("click", () => abrirModalPdv());
 document.getElementById("closeModalPdv").addEventListener("click", fecharModalPdv);
 document.getElementById("cancelarModalPdv").addEventListener("click", fecharModalPdv);
-document.getElementById("closeModalToken").addEventListener("click", () => {
-  document.getElementById("modalToken").style.display = "none";
-});
-document.getElementById("btnCopiarTokenRevelado").addEventListener("click", async () => {
-  const token = document.getElementById("tokenRevelado").textContent;
-  await navigator.clipboard.writeText(token);
-  showToast("Token copiado!");
-});
 
 document.getElementById("formPdv").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2305,8 +2293,11 @@ async function carregarLojas() {
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <code style="font-size:11px;color:var(--muted)">${tokenMask}</code>
-          <button data-action="copytoken" data-token="${token}" title="Copiar token" style="padding:2px 6px">
+          <button data-action="copytoken" data-token="${token}" title="Copiar token completo" style="padding:2px 6px">
             <i data-lucide="copy" style="width:14px;height:14px"></i>
+          </button>
+          <button data-action="regentoken" data-id="${l.id}" data-nome="${l.nome}" title="Regenerar token" style="padding:2px 6px">
+            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
           </button>
         </div>
       </td>
@@ -2330,6 +2321,11 @@ async function carregarLojas() {
           excluirLoja(btn.dataset.id);
       } else if (btn.dataset.action === "copytoken") {
         navigator.clipboard.writeText(btn.dataset.token).then(() => showToast("Token copiado!"));
+      } else if (btn.dataset.action === "regentoken") {
+        if (!confirm(`Regenerar token de "${btn.dataset.nome}"?\nO PDV instalado vai parar de funcionar até ser reconfigurado.`)) return;
+        const r = await apiFetch(`/api/v1/lojas/${btn.dataset.id}/token`, { method: "POST" });
+        if (r.ok) { const d = await r.json(); mostrarToken(d.api_token, true); }
+        else showToast("Erro ao regenerar token.");
       }
     });
   });
@@ -2353,9 +2349,14 @@ function fecharModalLoja() {
   document.getElementById("modalLoja").style.display = "none";
 }
 
-function mostrarToken(token) {
+function mostrarToken(token, isRegen = false) {
   document.getElementById("tokenGerado").textContent = token;
   document.getElementById("tokenGeradoInline").textContent = token;
+  document.getElementById("modalTokenTitulo").textContent = isRegen ? "Token regenerado" : "Token gerado";
+  document.getElementById("modalTokenDesc").textContent = isRegen
+    ? "Novo token gerado. Atualize o arquivo /etc/pdv-telegram-assistant.env no PDV e reinicie os serviços."
+    : "Copie o token abaixo e use no instalador PDV. Ele não será exibido novamente.";
+  document.getElementById("tokenInstaladorBox").style.display = isRegen ? "none" : "";
   document.getElementById("modalToken").style.display = "flex";
   lucide.createIcons();
 }
@@ -2369,11 +2370,11 @@ async function excluirLoja(id) {
 document.getElementById("btnNovaLoja").addEventListener("click", () => abrirModalLoja());
 document.getElementById("closeModalLoja").addEventListener("click", fecharModalLoja);
 document.getElementById("cancelarModalLoja").addEventListener("click", fecharModalLoja);
-document.getElementById("closeModalToken").addEventListener("click", () => document.getElementById("modalToken").style.display = "none");
-document.getElementById("fecharModalToken").addEventListener("click", () => { document.getElementById("modalToken").style.display = "none"; carregarLojas(); });
+function fecharModalToken() { document.getElementById("modalToken").style.display = "none"; }
+document.getElementById("closeModalToken").addEventListener("click", fecharModalToken);
+document.getElementById("fecharModalToken").addEventListener("click", () => { fecharModalToken(); carregarLojas(); });
 document.getElementById("btnCopiarToken").addEventListener("click", () => {
-  const t = document.getElementById("tokenGerado").textContent;
-  navigator.clipboard.writeText(t).then(() => showToast("Token copiado!"));
+  navigator.clipboard.writeText(document.getElementById("tokenGerado").textContent).then(() => showToast("Token copiado!"));
 });
 
 document.getElementById("formLoja").addEventListener("submit", async (e) => {

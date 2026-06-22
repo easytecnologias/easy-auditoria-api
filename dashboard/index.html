@@ -102,9 +102,6 @@
             <button class="nav-item nav-sub-item" data-view="lojas" id="navLojas" style="display:none">
               <i data-lucide="store"></i><span>Lojas</span>
             </button>
-            <button class="nav-item nav-sub-item" data-view="pdvs" id="navPdvs" style="display:none">
-              <i data-lucide="monitor"></i><span>PDVs</span>
-            </button>
           </div>
         </div>
         <button class="nav-item" id="sidebarLogoutBtn" style="width:100%;justify-content:flex-start;gap:10px;color:#c92a2a">
@@ -661,17 +658,24 @@
     </div>
   </div>
 
-  <!-- Modal: Token revelado -->
+  <!-- Modal: Token (criação e regeneração) -->
   <div id="modalToken" class="modal-backdrop" style="display:none">
-    <div class="user-modal" style="max-width:460px">
+    <div class="user-modal" style="max-width:480px">
       <div class="modal-header">
-        <div><p class="eyebrow">Configurações</p><h2>Token gerado</h2></div>
+        <div><p class="eyebrow">Instalação</p><h2 id="modalTokenTitulo">Token gerado</h2></div>
         <button id="closeModalToken" class="icon-button"><i data-lucide="x"></i></button>
       </div>
-      <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Copie este token agora. Ele não será exibido completo novamente.</p>
-      <div class="token-reveal-box">
-        <code id="tokenRevelado"></code>
-        <button type="button" id="btnCopiarTokenRevelado" class="primary-action" style="margin-top:14px;width:100%"><i data-lucide="copy"></i> Copiar token</button>
+      <p id="modalTokenDesc" style="margin:0 0 8px;font-size:13px;color:var(--muted)">Copie o token abaixo e use no instalador PDV. Ele não será exibido novamente.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+        <code id="tokenGerado" style="flex:1;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;word-break:break-all"></code>
+        <button id="btnCopiarToken" class="secondary-action" style="white-space:nowrap"><i data-lucide="copy"></i> Copiar</button>
+      </div>
+      <div id="tokenInstaladorBox" style="background:#f0fff4;border:1px solid #b2f2bb;border-radius:8px;padding:12px;font-size:12px;margin-bottom:16px">
+        <strong>No instalador, informe:</strong><br>
+        AUDITORIA_API_TOKEN=<span id="tokenGeradoInline" style="word-break:break-all"></span>
+      </div>
+      <div class="modal-actions">
+        <button id="fecharModalToken" class="primary-action" style="width:100%">Entendido</button>
       </div>
     </div>
   </div>
@@ -753,29 +757,6 @@
           <button type="submit" class="primary-action" id="btnSalvarLoja">Criar loja</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <!-- Modal: Token gerado -->
-  <div id="modalToken" class="modal-backdrop" style="display:none">
-    <div class="user-modal" style="max-width:480px">
-      <div class="modal-header">
-        <div><p class="eyebrow">Instalação</p><h2>Token gerado</h2></div>
-        <button id="closeModalToken" class="icon-button"><i data-lucide="x"></i></button>
-      </div>
-      <p style="margin:0 0 8px">Copie o token abaixo e use no instalador PDV:</p>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
-        <code id="tokenGerado" style="flex:1;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;word-break:break-all"></code>
-        <button id="btnCopiarToken" class="secondary-action" style="white-space:nowrap"><i data-lucide="copy"></i> Copiar</button>
-      </div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 16px">Guarde este token em segurança. Ele não será exibido novamente.</p>
-      <div style="background:#f0fff4;border:1px solid #b2f2bb;border-radius:8px;padding:12px;font-size:12px;margin-bottom:16px">
-        <strong>No instalador, informe:</strong><br>
-        AUDITORIA_API_TOKEN=<span id="tokenGeradoInline" style="word-break:break-all"></span>
-      </div>
-      <div class="modal-actions">
-        <button id="fecharModalToken" class="primary-action" style="width:100%">Entendido</button>
-      </div>
     </div>
   </div>
 
