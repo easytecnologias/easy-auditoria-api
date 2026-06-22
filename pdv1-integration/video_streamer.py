@@ -776,17 +776,25 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             stats_file = "/tmp/vlm_stats_%s.json" % date_str
             try:
                 import pathlib as _pl
-                s = json.loads(_pl.Path(stats_file).read_text()) if _pl.Path(stats_file).exists() else {"ok": 0, "suspeito": 0}
+                s = json.loads(_pl.Path(stats_file).read_text()) if _pl.Path(stats_file).exists() else {}
                 total = s.get("ok", 0) + s.get("suspeito", 0)
+                total_ms = s.get("total_ms", 0)
+                tempos = s.get("tempos", [])
+                media_ms = round(total_ms / total) if total > 0 else 0
                 stats = {
                     "date": date_str,
                     "aprovados": s.get("ok", 0),
                     "suspeitos": s.get("suspeito", 0),
                     "total": total,
                     "taxa_aprovacao": round(s.get("ok", 0) / total * 100, 1) if total > 0 else 0,
+                    "media_s": round(media_ms / 1000, 1) if media_ms else 0,
+                    "min_s": round(min(tempos) / 1000, 1) if tempos else 0,
+                    "max_s": round(max(tempos) / 1000, 1) if tempos else 0,
+                    "ultimo_s": round(tempos[-1] / 1000, 1) if tempos else 0,
+                    "tempos_recentes": [round(t / 1000, 1) for t in tempos[-10:]],
                 }
             except Exception as e:
-                stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0}
+                stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}
             body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")

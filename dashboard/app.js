@@ -2244,10 +2244,14 @@ async function carregarStatsIA() {
       const taxa = d.taxa_aprovacao ? `${d.taxa_aprovacao}%` : "0%";
       det.textContent = `${d.suspeitos || 0} suspeitos de ${d.total || 0} · ${taxa}`;
     }
-    if (elT) elT.textContent = d.media_s ? `${d.media_s}s` : "—";
+    if (elT) elT.textContent = d.ultimo_s ? `${d.ultimo_s}s` : (d.media_s ? `${d.media_s}s` : "—");
     if (detT) {
       const total = d.total || 0;
-      detT.textContent = total > 0 ? `média de ${total} análises hoje` : "aguardando análises…";
+      detT.textContent = total > 0 ? `último · méd ${d.media_s || 0}s · ${total} itens` : "aguardando análises…";
+    }
+    const minMax = document.getElementById("metricIATempoMinMax");
+    if (minMax && d.min_s && d.max_s) {
+      minMax.textContent = `mín ${d.min_s}s · máx ${d.max_s}s`;
     }
   } catch(e) {}
 }
