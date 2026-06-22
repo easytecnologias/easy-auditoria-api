@@ -386,6 +386,16 @@ function renderAlertMetrics() {
   document.getElementById("countReview").textContent = emRevisao;
   document.getElementById("countResolved").textContent = resolvidos;
 
+  // Card IA Divergências — alertas SmolVLM com resultado por estado
+  const divs = alerts.filter(a => a.resultado === "DIVERGENCIA_CATEGORIA" || a.event === "Categoria divergente");
+  const confirmadas = divs.filter(a => a.state === "resolved").length;
+  const ignoradas   = divs.filter(a => a.state === "ignored").length;
+  const emRevisaoDiv = divs.filter(a => a.state !== "resolved" && a.state !== "ignored").length;
+  const elDiv = document.getElementById("metricDivergencias");
+  const elDet = document.getElementById("metricDivergenciasDetalhe");
+  if (elDiv) elDiv.textContent = divs.length;
+  if (elDet) elDet.textContent = `${confirmadas} confirmadas · ${ignoradas} ignoradas${emRevisaoDiv ? ` · ${emRevisaoDiv} pendentes` : ''}`;
+
   document.getElementById("alertsFooterText").textContent = `Mostrando ${total} alertas de hoje`;
 }
 
@@ -480,7 +490,22 @@ function openDrawer(alert) {
   const badge = document.getElementById("resultBadge");
   badge.textContent = alert.result;
   badge.className = `result-badge ${alert.result === "Confere" ? "success" : alert.result === "Inconclusivo" || alert.result === "Revisar" ? "warning" : "danger"}`;
-  aplicarEvidencia(alert.imageUrl);
+  // Snapshot do streamer: imagem única, não precisa dividir em painéis
+  if (alert.imageUrl && alert.imageUrl.startsWith('/streamer/')) {
+    const mainEv = document.getElementById("mainEvidence");
+    const frameButtons = document.querySelectorAll(".frame-strip button");
+    mainEv.src = FRAME_FALLBACKS.register;
+    mediaObjectUrl(alert.imageUrl)
+      .then(blobUrl => {
+        mainEv.src = blobUrl;
+        frameButtons.forEach(btn => { btn.dataset.frame = blobUrl; });
+        frameButtons.forEach(b => b.classList.remove("active"));
+        if (frameButtons[1]) frameButtons[1].classList.add("active");
+      })
+      .catch(err => { console.error('Foto falhou:', alert.imageUrl, err); });
+  } else {
+    aplicarEvidencia(alert.imageUrl);
+  }
   drawer.classList.add("open");
   backdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
@@ -519,17 +544,44 @@ function openVideo() {
   const unavailable = document.getElementById("videoUnavailable");
   video.hidden = false;
   unavailable.hidden = true;
-  video.onerror = () => {
-    video.hidden = true;
-    unavailable.hidden = false;
-  };
-  if (!selectedAlert.videoUrl) {
-    video.hidden = true; unavailable.hidden = false; return;
+  video.onerror = () => { video.hidden = true; unavailable.hidden = false; };
+
+  // Para alertas SmolVLM (imageUrl do streamer), gerar vídeo pelo timestamp
+  // Tem prioridade sobre videoUrl da API (que não tem arquivo para esses alertas)
+  let videoSrc = null;
+  if (selectedAlert.imageUrl && selectedAlert.imageUrl.startsWith('/streamer/snapshot')) {
+    try {
+      const url = new URL(selectedAlert.imageUrl, location.href);
+      const ts = url.searchParams.get('ts');
+      const token = url.searchParams.get('token') || (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
+      if (ts) {
+        // Forçar formato ISO para compatibilidade entre browsers
+        const dt = new Date(ts.replace(' ', 'T').replace('+', 'T'));
+        const fmt = d => {
+          const p = n => String(n).padStart(2,'0');
+          return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        };
+        const start = fmt(new Date(dt.getTime() - 15000));
+        const end   = fmt(new Date(dt.getTime() + 15000));
+        const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
+        videoSrc = `${STREAMER}/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${token}&skip_dhav=1`;
+      }
+    } catch(e) {}
   }
-  // Buscar vídeo com auth e criar blob URL (resolve URLs protegidas)
-  mediaObjectUrl(selectedAlert.videoUrl)
-    .then(blobUrl => { video.src = blobUrl; video.load(); video.play().catch(() => {}); })
-    .catch(() => { video.hidden = true; unavailable.hidden = false; });
+  // Fallback: usar videoUrl da API (alertas normais)
+  if (!videoSrc) videoSrc = selectedAlert.videoUrl;
+
+  if (!videoSrc) { video.hidden = true; unavailable.hidden = false; return; }
+
+  // Vídeo do streamer (fMP4 streaming) — direto no src
+  if (videoSrc.includes('/streamer/') && !videoSrc.includes('/api/v1/')) {
+    video.src = videoSrc; video.load(); video.play().catch(() => {});
+  } else {
+    // URL protegida da API — usar blob
+    mediaObjectUrl(videoSrc)
+      .then(blobUrl => { video.src = blobUrl; video.load(); video.play().catch(() => {}); })
+      .catch(() => { video.hidden = true; unavailable.hidden = false; });
+  }
 }
 
 function resetVideo() {
@@ -2175,6 +2227,24 @@ function renderAlertas2() {
     _alertsPagAtual, filtrados.length, p => { _alertsPagAtual = p; renderAlertas2(); });
 }
 
+async function carregarStatsIA() {
+  try {
+    const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
+    const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
+    const today    = new Date().toISOString().slice(0,10);
+    const r = await fetch(`${STREAMER}/vlm-stats?date=${today}&token=${TOKEN}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el  = document.getElementById("metricIAAprovados");
+    const det = document.getElementById("metricIADetalhe");
+    if (el) el.textContent = d.aprovados ?? "—";
+    if (det) {
+      const taxa = d.taxa_aprovacao ? ` · ${d.taxa_aprovacao}%` : "";
+      det.textContent = `${d.suspeitos || 0} suspeitos de ${d.total || 0}${taxa}`;
+    }
+  } catch(e) {}
+}
+
 function iniciarApp() {
   atualizarRotuloData();
   carregarAlertas();
@@ -2185,12 +2255,20 @@ function iniciarApp() {
     if (isHoje(selectedDate)) carregarAlertas();
   }, REFRESH_INTERVAL_MS);
   setInterval(carregarHealth, REFRESH_INTERVAL_MS);
+  carregarStatsIA();
+  setInterval(carregarStatsIA, 30000);
   setInterval(() => {
     if (isHoje(selectedDate)) carregarVendas();
   }, REFRESH_INTERVAL_MS);
 }
 
 verificarAuth();
+
+// Sino de notificação → navegar direto para Alertas
+document.querySelector(".notification-button")?.addEventListener("click", () => {
+  const alertsBtn = document.querySelector(".nav-item[data-view='alerts']");
+  if (alertsBtn) alertsBtn.click();
+});
 
 // iOS Safari restaura scroll position ao reabrir aba — forçar topo em múltiplos momentos
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';

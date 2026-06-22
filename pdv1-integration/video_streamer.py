@@ -500,9 +500,9 @@ def _stream_dvr(start_time, end_time, wfile):
     ffmpeg = subprocess.Popen(
         ["ffmpeg", "-y",
          "-i", "pipe:0",
-         "-vf", "scale=480:-2",
+         "-vf", "scale=720:-2",
          "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1",
-         "-preset", "ultrafast", "-crf", "35",
+         "-preset", "fast", "-crf", "23",
          "-an",
          "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof",
          "pipe:1"],
@@ -594,20 +594,22 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             except ValueError:
                 self.send_error(400, "ts invalido")
                 return
-            # Janela de 3s centrada no timestamp (DVR contínuo — cobre emendas de segmento)
+            # Baixar 1s antes do timestamp para garantir segmento DHAV disponível
+            # O -ss 1 no ffmpeg pula 1s e extrai o frame no timestamp exato
             start = (ts_dt - datetime.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
-            end   = (ts_dt + datetime.timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+            end   = (ts_dt + datetime.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
             dvr_url = (
                 "http://%s/cgi-bin/loadfile.cgi?action=startLoad&channel=%s&startTime=%s&endTime=%s"
             ) % (HOST, CHANNEL, urllib.parse.quote(start), urllib.parse.quote(end))
             try:
-                # Pipe: curl DVR | ffmpeg extrai 1 frame JPEG
+                # Pipe: curl DVR | ffmpeg seek 1s → extrai frame no timestamp exato
                 curl = subprocess.Popen(
                     ["curl", "-s", "--digest", "-u", "%s:%s" % (USER, PASS), dvr_url],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 )
                 ffmpeg = subprocess.Popen(
                     ["ffmpeg", "-y", "-i", "pipe:0",
+                     "-ss", "1",        # pular 1s = chegar no timestamp pedido
                      "-vframes", "1",
                      "-q:v", "3", "-f", "image2", "pipe:1"],
                     stdin=curl.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -713,9 +715,9 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 ffmpeg = subprocess.Popen(
                     ["ffmpeg", "-y", "-i", "pipe:0",
                      "-t", str(dur),
-                     "-vf", "scale=360:-2",
-                     "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
-                     "-preset", "ultrafast", "-crf", "38",
+                     "-vf", "scale=480:-2",
+                     "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1",
+                     "-preset", "fast", "-crf", "26",
                      "-an",
                      "-movflags", "+faststart",
                      tmp_path],
@@ -767,6 +769,33 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             return
 
         # ── /cupons → lista todos os cupons do dia (do spy file)
+        # ── /vlm-stats → estatísticas da IA SmolVLM (lê arquivo compartilhado)
+        if path == '/vlm-stats':
+            if not self._check_token(params): return
+            date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
+            stats_file = "/tmp/vlm_stats_%s.json" % date_str
+            try:
+                import pathlib as _pl
+                s = json.loads(_pl.Path(stats_file).read_text()) if _pl.Path(stats_file).exists() else {"ok": 0, "suspeito": 0}
+                total = s.get("ok", 0) + s.get("suspeito", 0)
+                stats = {
+                    "date": date_str,
+                    "aprovados": s.get("ok", 0),
+                    "suspeitos": s.get("suspeito", 0),
+                    "total": total,
+                    "taxa_aprovacao": round(s.get("ok", 0) / total * 100, 1) if total > 0 else 0,
+                }
+            except Exception as e:
+                stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0}
+            body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == '/cupons':
             if not self._check_token(params): return
             date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]

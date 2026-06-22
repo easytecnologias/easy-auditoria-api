@@ -116,6 +116,7 @@ RESULTADO_LABELS = {
     "NAO_CONFERE": "Nao confere",
     "INCONCLUSIVO": "Inconclusivo",
     "NAO_ANALISADO": "Nao analisado",
+    "DIVERGENCIA_CATEGORIA": "Divergencia de categoria",
 }
 
 EVENTO_LABELS = {
@@ -124,6 +125,7 @@ EVENTO_LABELS = {
     "NAO_CONFERE": ("Produto incompativel", "Divergencia identificada na analise visual"),
     "INCONCLUSIVO": ("Imagem inconclusiva", "Revisao manual recomendada"),
     "NAO_ANALISADO": ("Sem analise visual", "Auditoria visual nao executada"),
+    "DIVERGENCIA_CATEGORIA": ("Categoria divergente", "IA local detectou categoria diferente do cupom"),
 }
 
 STATE_LABELS = {
@@ -587,7 +589,7 @@ def autenticar_loja(
 
 
 class ResultadoIn(BaseModel):
-    resultado: str = Field(pattern=r"^(CONFERE|CONFERE_POR_REGRA_DE_VALOR|NAO_CONFERE|INCONCLUSIVO|NAO_ANALISADO)$")
+    resultado: str = Field(pattern=r"^(CONFERE|CONFERE_POR_REGRA_DE_VALOR|NAO_CONFERE|INCONCLUSIVO|NAO_ANALISADO|DIVERGENCIA_CATEGORIA)$")
     confianca: Optional[int] = Field(default=None, ge=0, le=100)
     comparacao_pdv: Optional[str] = Field(default=None, max_length=4000)
     possivel_divergencia: Optional[str] = Field(default=None, max_length=4000)
@@ -658,8 +660,9 @@ def criar_evento(
         ),
     )
     db.commit()
+    # ORDER BY id DESC para pegar o evento recém-inserido (não um anterior com mesma timestamp)
     row = db.execute(
-        "SELECT id FROM auditoria_eventos WHERE loja_id = ? AND timestamp = ? AND pdv = ? AND imagem IS ?",
+        "SELECT id FROM auditoria_eventos WHERE loja_id = ? AND timestamp = ? AND pdv = ? AND imagem IS ? ORDER BY id DESC LIMIT 1",
         (loja["id"], evento.timestamp, evento.pdv, evento.imagem),
     ).fetchone()
     return {"ok": True, "id": row["id"] if row else None}
@@ -752,7 +755,7 @@ def _formatar_valor(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _evento_para_alerta(row: sqlite3.Row) -> dict:
+def _evento_para_alerta(row: sqlite3.Row, loja_token: str = "") -> dict:
     resultado = row["resultado"] or "NAO_ANALISADO"
     event, default_subtitle = EVENTO_LABELS.get(resultado, EVENTO_LABELS["NAO_ANALISADO"])
     status = row["status"]
@@ -776,7 +779,11 @@ def _evento_para_alerta(row: sqlite3.Row) -> dict:
         "result": RESULTADO_LABELS.get(resultado, resultado),
         "analysis": row["comparacao_pdv"] or "",
         "note": row["possivel_divergencia"] or "",
-        "imageUrl": f"/api/v1/events/{row['id']}/image" if row["imagem"] else None,
+        "imageUrl": (
+            row["imagem"] if (row["imagem"] or "").startswith("/streamer/")
+            else f"/api/v1/events/{row['id']}/image?token={loja_token}" if row["imagem"]
+            else None
+        ),
         "videoUrl": f"/api/v1/events/{row['id']}/video",
     }
 
@@ -819,7 +826,9 @@ def listar_alertas(
     order = "ASC" if cupom else "DESC"
     query += f" ORDER BY timestamp {order} LIMIT 200"
     rows = db.execute(query, params).fetchall()
-    return [_evento_para_alerta(row) for row in rows]
+    loja_full = db.execute("SELECT * FROM lojas WHERE id = ?", (loja_row["id"],)).fetchone()
+    loja_api_token = loja_full["api_token"] if (loja_full and "api_token" in loja_full.keys()) else ""
+    return [_evento_para_alerta(row, loja_token=loja_api_token) for row in rows]
 
 
 @app.get("/api/v1/health")
@@ -859,16 +868,38 @@ def enviar_imagem_evento(
     if row is None:
         raise HTTPException(status_code=404, detail="Evento nao encontrado")
     _imagem_path(evento_id).write_bytes(_ler_upload(file, MAX_IMAGE_BYTES, {"image/jpeg", "image/png", "image/webp"}))
+    # Marcar evento como tendo imagem para o frontend saber buscar
+    db.execute("UPDATE auditoria_eventos SET imagem = 'bip.jpg' WHERE id = ?", (evento_id,))
+    db.commit()
     return {"ok": True}
 
 
 @app.get("/api/v1/events/{evento_id}/image")
 def obter_imagem_evento(
     evento_id: int,
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
+    token: Optional[str] = Query(default=None),
+    authorization: Optional[str] = Header(default=None),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    _evento_autorizado(evento_id, usuario, db)
+    # Aceita token da loja via query param OU JWT de usuario via header
+    loja = None
+    if token:
+        loja = db.execute("SELECT id FROM lojas WHERE api_token = ?", (token,)).fetchone()
+    if loja is None:
+        # Fallback: tentar JWT de usuario
+        try:
+            auth_header = authorization or ""
+            if not auth_header.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Token ausente")
+            usuario_id = _decode_token(auth_header[len("Bearer "):].strip())
+            usuario = db.execute("SELECT * FROM usuarios WHERE id = ? AND ativo = 1", (usuario_id,)).fetchone()
+            if usuario is None:
+                raise HTTPException(status_code=401, detail="Token invalido")
+            _evento_autorizado(evento_id, usuario, db)
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=401, detail="Token invalido")
     caminho = _imagem_path(evento_id)
     if not caminho.is_file():
         raise HTTPException(status_code=404, detail="Imagem nao encontrada")

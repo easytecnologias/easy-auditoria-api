@@ -176,8 +176,12 @@
             <div><span>Alertas pendentes</span><strong id="metricAlertasPendentes">0 <small id="metricAlertasCriticos">0 críticos</small></strong></div>
           </article>
           <article>
-            <div class="metric-icon amber"><i data-lucide="timer"></i></div>
-            <div><span>Análise média</span><strong>8,4s</strong></div>
+            <div class="metric-icon amber"><i data-lucide="check-circle"></i></div>
+            <div>
+              <span>IA Aprovados</span>
+              <strong id="metricIAAprovados">—</strong>
+              <small id="metricIADetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">carregando…</small>
+            </div>
           </article>
         </section>
 
@@ -692,34 +696,38 @@
       <button id="closeDrawer" class="icon-button" aria-label="Fechar"><i data-lucide="x"></i></button>
     </div>
     <div class="drawer-body">
+      <!-- Foto ocupa toda a largura sem padding -->
       <div class="evidence-main">
         <img id="mainEvidence" src="assets/frame-register.svg" alt="Simulação da câmera superior do caixa">
         <span class="camera-label">01 · PDV 01</span>
         <span class="camera-time" id="cameraTime">10/06/2026 14:32:08</span>
       </div>
-      <div class="frame-strip">
-        <button data-frame="assets/frame-before.svg"><img src="assets/frame-before.svg" alt=""><span>Antes</span></button>
-        <button class="active" data-frame="assets/frame-register.svg"><img src="assets/frame-register.svg" alt=""><span>Registro</span></button>
-        <button data-frame="assets/frame-after.svg"><img src="assets/frame-after.svg" alt=""><span>Depois</span></button>
-      </div>
+      <!-- Resto do conteúdo com padding -->
+      <div class="drawer-content">
+        <div class="frame-strip">
+          <button data-frame="assets/frame-before.svg"><img src="assets/frame-before.svg" alt=""><span>Antes</span></button>
+          <button class="active" data-frame="assets/frame-register.svg"><img src="assets/frame-register.svg" alt=""><span>Registro</span></button>
+          <button data-frame="assets/frame-after.svg"><img src="assets/frame-after.svg" alt=""><span>Depois</span></button>
+        </div>
 
-      <div class="decision-block">
-        <div class="decision-row"><span id="resultBadge" class="result-badge danger">Não confere</span><strong id="confidenceValue">94% confiança</strong></div>
-        <p id="analysisText">O PDV registrou um produto, mas os três quadros não mostram passagem física compatível na área do scanner.</p>
-      </div>
+        <div class="decision-block">
+          <div class="decision-row"><span id="resultBadge" class="result-badge danger">Não confere</span><strong id="confidenceValue">94% confiança</strong></div>
+          <p id="analysisText">O PDV registrou um produto, mas os três quadros não mostram passagem física compatível na área do scanner.</p>
+        </div>
 
-      <dl class="event-data">
-        <div><dt>PDV</dt><dd id="detailPdv">PDV 01</dd></div>
-        <div><dt>Cupom</dt><dd id="detailReceipt">221548</dd></div>
-        <div><dt>Horário</dt><dd id="detailTime">14:32:08</dd></div>
-        <div><dt>Produto</dt><dd id="detailProduct">Café Maratá 250g</dd></div>
-        <div><dt>Quantidade</dt><dd id="detailQuantity">1 unidade</dd></div>
-        <div><dt>Valor</dt><dd id="detailValue">R$ 14,99</dd></div>
-      </dl>
+        <dl class="event-data">
+          <div><dt>PDV</dt><dd id="detailPdv">PDV 01</dd></div>
+          <div><dt>Cupom</dt><dd id="detailReceipt">221548</dd></div>
+          <div><dt>Horário</dt><dd id="detailTime">14:32:08</dd></div>
+          <div><dt>Produto</dt><dd id="detailProduct">Café Maratá 250g</dd></div>
+          <div><dt>Quantidade</dt><dd id="detailQuantity">1 unidade</dd></div>
+          <div><dt>Valor</dt><dd id="detailValue">R$ 14,99</dd></div>
+        </dl>
 
-      <div class="technical-note">
-        <i data-lucide="scan-search"></i>
-        <div><strong>Análise técnica</strong><p id="technicalNote">Movimento abaixo do limite local e ausência visual confirmada pela análise de imagem.</p></div>
+        <div class="technical-note">
+          <i data-lucide="scan-search"></i>
+          <div><strong>Análise técnica</strong><p id="technicalNote">Movimento abaixo do limite local e ausência visual confirmada pela análise de imagem.</p></div>
+        </div>
       </div>
     </div>
     <div class="drawer-actions">
