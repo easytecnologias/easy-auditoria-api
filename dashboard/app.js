@@ -55,6 +55,19 @@ function mostrarApp(usuario) {
   if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
     document.getElementById("navUsuarios").style.display = "";
   }
+  // Nome da loja no topo
+  const lojaEl = document.getElementById("topbarLojaNome");
+  if (lojaEl) {
+    if (usuario.loja_id) {
+      // Buscar nome da loja
+      apiFetch("/api/v1/lojas").then(r => r.ok ? r.json() : []).then(lojas => {
+        const loja = lojas.find(l => l.id === usuario.loja_id);
+        if (lojaEl) lojaEl.textContent = loja ? loja.nome : usuario.loja_id;
+      }).catch(() => { if (lojaEl) lojaEl.textContent = usuario.loja_id; });
+    } else {
+      lojaEl.textContent = "Todas as lojas";
+    }
+  }
   if (usuario.perfil === "admin") {
     document.getElementById("navLojas").style.display = "";
   }
