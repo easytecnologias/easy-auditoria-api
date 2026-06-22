@@ -2237,10 +2237,17 @@ async function carregarStatsIA() {
     const d = await r.json();
     const el  = document.getElementById("metricIAAprovados");
     const det = document.getElementById("metricIADetalhe");
+    const elT = document.getElementById("metricIATempo");
+    const detT = document.getElementById("metricIATempoDetalhe");
     if (el) el.textContent = d.aprovados ?? "—";
     if (det) {
-      const taxa = d.taxa_aprovacao ? ` · ${d.taxa_aprovacao}%` : "";
-      det.textContent = `${d.suspeitos || 0} suspeitos de ${d.total || 0}${taxa}`;
+      const taxa = d.taxa_aprovacao ? `${d.taxa_aprovacao}%` : "0%";
+      det.textContent = `${d.suspeitos || 0} suspeitos de ${d.total || 0} · ${taxa}`;
+    }
+    if (elT) elT.textContent = d.media_s ? `${d.media_s}s` : "—";
+    if (detT) {
+      const total = d.total || 0;
+      detT.textContent = total > 0 ? `média de ${total} análises hoje` : "aguardando análises…";
     }
   } catch(e) {}
 }
