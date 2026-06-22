@@ -813,9 +813,21 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             except ValueError:
                 self.send_error(400, "Data invalida")
                 return
-            cupons = _listar_cupons(dt)
-            total_itens = sum(c.get('itens', 0) for c in cupons)
-            total_cupons = len([c for c in cupons if c.get('fechou')])
+            # Conta todos os VIT (bips) do dia, incluindo cupons abertos/cancelados
+            spy = _spy_path(dt)
+            total_itens = 0
+            total_cupons = 0
+            if spy.exists():
+                for raw in spy.read_text(errors='replace').splitlines():
+                    raw = raw.strip()
+                    m = LINE_RE.match(raw)
+                    if not m:
+                        continue
+                    ev = m.group(2)
+                    if ev == 'VIT':
+                        total_itens += 1
+                    elif ev == 'FECHACUPOM':
+                        total_cupons += 1
             stats = {
                 "date": date_str,
                 "total_itens": total_itens,
