@@ -65,51 +65,22 @@ function mostrarApp(usuario) {
 
 async function _carregarSeletorLoja(usuario) {
   const nomeEl = document.getElementById("topbarLojaNome");
-  const lista  = document.getElementById("lojaFilterList");
-  if (!nomeEl || !lista) return;
-
-  // Admin vê todas as lojas; outros só a sua
-  let lojas = [];
-  if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
-    const r = await apiFetch("/api/v1/lojas");
-    if (r.ok) lojas = await r.json();
-  }
-
-  // Definir loja inicial
+  if (!nomeEl) return;
+  // Preenche só o nome inicial — a lista é carregada quando o dropdown abre
   if (usuario.loja_id) {
-    const mine = lojas.find(l => l.id === usuario.loja_id);
-    nomeEl.textContent = mine ? mine.nome : usuario.loja_id;
     LOJA = usuario.loja_id;
+    // Buscar nome para exibir
+    const r = await apiFetch("/api/v1/lojas");
+    if (r.ok) {
+      const lojas = await r.json();
+      const mine = lojas.find(l => l.id === usuario.loja_id);
+      nomeEl.textContent = mine ? mine.nome : usuario.loja_id;
+    } else {
+      nomeEl.textContent = usuario.loja_id;
+    }
   } else {
-    nomeEl.textContent = lojas.length === 1 ? lojas[0].nome : "Todas as lojas";
-    if (lojas.length === 1) LOJA = lojas[0].id;
+    nomeEl.textContent = "Todas as lojas";
   }
-
-  // Montar lista do dropdown
-  if (lojas.length <= 1) {
-    // Sem dropdown se só tem 1 loja ou nenhuma
-    document.getElementById("lojaFilterButton").style.cursor = "default";
-    return;
-  }
-
-  lista.innerHTML = lojas.map(l => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:13px;cursor:pointer;border-radius:6px">
-      <input type="radio" name="lojaFilter" value="${l.id}" ${LOJA === l.id ? "checked" : ""}>
-      ${l.nome}
-    </label>`).join("");
-
-  lista.querySelectorAll("input[name=lojaFilter]").forEach(inp => {
-    inp.addEventListener("change", () => {
-      const loja = lojas.find(l => l.id === inp.value);
-      LOJA = inp.value;
-      nomeEl.textContent = loja ? loja.nome : inp.value;
-      document.getElementById("lojaFilterMenu").classList.remove("open");
-      // Atualizar dados do dashboard
-      carregarAlertas();
-      carregarVendas();
-      carregarHealth();
-    });
-  });
 }
 
 async function verificarAuth() {
@@ -744,8 +715,31 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   });
 });
 
-document.getElementById("lojaFilterButton").addEventListener("click", () => {
-  document.getElementById("lojaFilterMenu").classList.toggle("open");
+document.getElementById("lojaFilterButton").addEventListener("click", async () => {
+  const menu = document.getElementById("lojaFilterMenu");
+  const lista = document.getElementById("lojaFilterList");
+  // Carregar lojas na abertura (evita problema de timing)
+  if (lista && lista.children.length === 0) {
+    const r = await apiFetch("/api/v1/lojas");
+    if (r.ok) {
+      const lojas = await r.json();
+      const nomeEl = document.getElementById("topbarLojaNome");
+      lista.innerHTML = lojas.map(l =>
+        `<label><input type="radio" name="lojaRadio" value="${l.id}" ${LOJA===l.id?"checked":""}> ${l.nome}</label>`
+      ).join("") || `<label style="color:var(--muted);pointer-events:none">Nenhuma loja cadastrada</label>`;
+      lista.querySelectorAll("input[name=lojaRadio]").forEach(inp => {
+        inp.addEventListener("change", () => {
+          const loja = lojas.find(l => l.id === inp.value);
+          LOJA = inp.value;
+          if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
+          lista.innerHTML = ""; // limpa para recarregar marcador na próxima abertura
+          menu.classList.remove("open");
+          carregarAlertas(); carregarVendas(); carregarHealth();
+        });
+      });
+    }
+  }
+  menu.classList.toggle("open");
 });
 document.addEventListener("click", e => {
   if (!e.target.closest(".store-selector")) {
