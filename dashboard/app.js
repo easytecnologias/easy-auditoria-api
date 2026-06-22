@@ -1,7 +1,6 @@
-let LOJA = (window.APP_CONFIG || {}).LOJA || "loja-106";
+const LOJA = "loja-106";
 const REFRESH_INTERVAL_MS = 15000;
 const TOKEN_KEY = "ea_token";
-const USUARIO_KEY = "ea_usuario";
 
 // ── Auth ──────────────────────────────────────────────
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -48,21 +47,16 @@ function mostrarLogin() {
 function mostrarApp(usuario) {
   document.getElementById("loginScreen").hidden = true;
   document.getElementById("appShell").hidden = false;
-  // Usar loja_id do usuário; admin sem loja usa o config.js
-  if (usuario.loja_id) LOJA = usuario.loja_id;
-  localStorage.setItem(USUARIO_KEY, JSON.stringify(usuario));
   const iniciais = usuario.nome.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
   const perfis = { admin: "Administrador", supervisor: "Supervisor", operador: "Operador" };
   document.getElementById("profileAvatar").textContent = iniciais;
   document.getElementById("profileName").textContent = usuario.nome;
   document.getElementById("profileRole").textContent = perfis[usuario.perfil] || usuario.perfil;
-  if (usuario.perfil === "admin") {
-    document.getElementById("navLojas").style.display = "";
-  }
   if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
     document.getElementById("navUsuarios").style.display = "";
   }
   if (usuario.perfil === "admin") {
+    document.getElementById("navLojas").style.display = "";
     document.getElementById("navPdvs").style.display = "";
   }
   lucide.createIcons();
@@ -1267,7 +1261,7 @@ function renderVarBody() {
     }
 
     // ── Botão Gerar vídeo ─────────────────────────────────────────────────────
-    document.getElementById("btnGerarVideo").addEventListener("click", async () => {
+    document.getElementById("btnGerarVideo")?.addEventListener("click", async () => {
       gerarBox.hidden = true; loadingBox.hidden = false;
 
       const semEventos = varResultLista.length === 0;
@@ -1838,7 +1832,11 @@ async function carregarPdvs() {
   lucide.createIcons();
 }
 
-function mostrarTokenRevelado(token) { mostrarToken(token, false); }
+function mostrarTokenRevelado(token) {
+  document.getElementById("tokenRevelado").textContent = token;
+  document.getElementById("modalToken").style.display = "flex";
+  lucide.createIcons();
+}
 
 function abrirModalPdv(pdv = null) {
   pdvEditandoId = pdv ? pdv.id : null;
@@ -1859,6 +1857,14 @@ function fecharModalPdv() { document.getElementById("modalPdv").style.display = 
 document.getElementById("btnNovoPdv").addEventListener("click", () => abrirModalPdv());
 document.getElementById("closeModalPdv").addEventListener("click", fecharModalPdv);
 document.getElementById("cancelarModalPdv").addEventListener("click", fecharModalPdv);
+document.getElementById("closeModalToken").addEventListener("click", () => {
+  document.getElementById("modalToken").style.display = "none";
+});
+document.getElementById("btnCopiarTokenRevelado").addEventListener("click", async () => {
+  const token = document.getElementById("tokenRevelado").textContent;
+  await navigator.clipboard.writeText(token);
+  showToast("Token copiado!");
+});
 
 document.getElementById("formPdv").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2270,8 +2276,10 @@ function iniciarApp() {
   }, REFRESH_INTERVAL_MS);
 }
 
+verificarAuth();
+
 // ── Lojas ──────────────────────────────────────────────────────────────
-let lojaEditandoId = null;
+let _lojaEditandoId = null;
 
 async function carregarLojas() {
   const resp = await apiFetch("/api/v1/lojas");
@@ -2284,7 +2292,7 @@ async function carregarLojas() {
   }
   tbody.innerHTML = lojas.map(l => {
     const token = l.api_token || "";
-    const tokenMask = token ? token.slice(0, 8) + "••••••••••••••••" + token.slice(-4) : "—";
+    const mask = token ? token.slice(0,8) + "••••••••" + token.slice(-4) : "—";
     const criado = l.criado_em ? new Date(l.criado_em).toLocaleDateString("pt-BR") : "—";
     return `<tr>
       <td><strong>${l.nome}</strong></td>
@@ -2292,48 +2300,56 @@ async function carregarLojas() {
       <td>${l.pdv_nome || '<span style="color:var(--muted)">—</span>'}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px">
-          <code style="font-size:11px;color:var(--muted)">${tokenMask}</code>
-          <button data-action="copytoken" data-token="${token}" title="Copiar token completo" style="padding:2px 6px">
-            <i data-lucide="copy" style="width:14px;height:14px"></i>
-          </button>
-          <button data-action="regentoken" data-id="${l.id}" data-nome="${l.nome}" title="Regenerar token" style="padding:2px 6px">
-            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
-          </button>
+          <code style="font-size:11px;color:var(--muted)">${mask}</code>
+          <button data-laction="copy" data-token="${token}" title="Copiar token" style="padding:2px 6px"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
+          <button data-laction="regen" data-id="${l.id}" data-nome="${l.nome}" title="Regenerar token" style="padding:2px 6px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i></button>
         </div>
       </td>
       <td>${criado}</td>
       <td>
         <div class="row-actions">
-          <button data-action="edit" data-id="${l.id}" title="Editar"><i data-lucide="pencil"></i></button>
-          <button data-action="del" data-id="${l.id}" data-nome="${l.nome}" title="Excluir"><i data-lucide="trash-2" style="color:#c92a2a"></i></button>
+          <button data-laction="edit" data-id="${l.id}" title="Editar"><i data-lucide="pencil"></i></button>
+          <button data-laction="del" data-id="${l.id}" data-nome="${l.nome}" title="Excluir"><i data-lucide="trash-2" style="color:#c92a2a"></i></button>
         </div>
       </td>
     </tr>`;
   }).join("");
-
-  tbody.querySelectorAll("button[data-action]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.action === "edit") {
-        const l = lojas.find(x => x.id === btn.dataset.id);
-        abrirModalLoja(l);
-      } else if (btn.dataset.action === "del") {
-        if (confirm(`Excluir loja "${btn.dataset.nome}"? Esta ação não pode ser desfeita.`))
-          excluirLoja(btn.dataset.id);
-      } else if (btn.dataset.action === "copytoken") {
+  tbody.querySelectorAll("button[data-laction]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const a = btn.dataset.laction;
+      if (a === "copy") {
         navigator.clipboard.writeText(btn.dataset.token).then(() => showToast("Token copiado!"));
-      } else if (btn.dataset.action === "regentoken") {
-        if (!confirm(`Regenerar token de "${btn.dataset.nome}"?\nO PDV instalado vai parar de funcionar até ser reconfigurado.`)) return;
+      } else if (a === "edit") {
+        const l = lojas.find(x => x.id === btn.dataset.id);
+        _abrirModalLoja(l);
+      } else if (a === "del") {
+        if (!confirm(`Excluir loja "${btn.dataset.nome}"?`)) return;
+        const r = await apiFetch(`/api/v1/lojas/${btn.dataset.id}`, { method: "DELETE" });
+        if (r.ok) { showToast("Loja excluída."); carregarLojas(); }
+      } else if (a === "regen") {
+        if (!confirm(`Regenerar token de "${btn.dataset.nome}"?\nO PDV instalado vai parar até ser reconfigurado.`)) return;
         const r = await apiFetch(`/api/v1/lojas/${btn.dataset.id}/token`, { method: "POST" });
-        if (r.ok) { const d = await r.json(); mostrarToken(d.api_token, true); }
-        else showToast("Erro ao regenerar token.");
+        if (r.ok) { const d = await r.json(); _mostrarLojaToken(d.api_token, true); }
       }
     });
   });
   lucide.createIcons();
 }
 
-function abrirModalLoja(loja = null) {
-  lojaEditandoId = loja ? loja.id : null;
+function _mostrarLojaToken(token, isRegen = false) {
+  document.getElementById("lojaTokenValor").textContent = token;
+  document.getElementById("lojaTokenInline").textContent = token;
+  document.getElementById("modalLojaTokenTitulo").textContent = isRegen ? "Token regenerado" : "Token gerado";
+  document.getElementById("modalLojaTokenDesc").textContent = isRegen
+    ? "Atualize AUDITORIA_API_TOKEN no arquivo /etc/pdv-telegram-assistant.env no PDV e reinicie os serviços."
+    : "Copie o token e use no instalador PDV. Não será exibido novamente.";
+  document.getElementById("lojaTokenInstalador").style.display = isRegen ? "none" : "";
+  document.getElementById("modalLojaToken").style.display = "flex";
+  lucide.createIcons();
+}
+
+function _abrirModalLoja(loja = null) {
+  _lojaEditandoId = loja ? loja.id : null;
   document.getElementById("modalLojaTitulo").textContent = loja ? "Editar loja" : "Nova loja";
   document.getElementById("lId").value = loja?.id || "";
   document.getElementById("lId").disabled = !!loja;
@@ -2345,36 +2361,13 @@ function abrirModalLoja(loja = null) {
   lucide.createIcons();
 }
 
-function fecharModalLoja() {
-  document.getElementById("modalLoja").style.display = "none";
-}
-
-function mostrarToken(token, isRegen = false) {
-  document.getElementById("tokenGerado").textContent = token;
-  document.getElementById("tokenGeradoInline").textContent = token;
-  document.getElementById("modalTokenTitulo").textContent = isRegen ? "Token regenerado" : "Token gerado";
-  document.getElementById("modalTokenDesc").textContent = isRegen
-    ? "Novo token gerado. Atualize o arquivo /etc/pdv-telegram-assistant.env no PDV e reinicie os serviços."
-    : "Copie o token abaixo e use no instalador PDV. Ele não será exibido novamente.";
-  document.getElementById("tokenInstaladorBox").style.display = isRegen ? "none" : "";
-  document.getElementById("modalToken").style.display = "flex";
-  lucide.createIcons();
-}
-
-async function excluirLoja(id) {
-  const resp = await apiFetch(`/api/v1/lojas/${id}`, { method: "DELETE" });
-  if (resp.ok) { showToast("Loja excluída."); carregarLojas(); }
-  else showToast("Erro ao excluir loja.");
-}
-
-document.getElementById("btnNovaLoja").addEventListener("click", () => abrirModalLoja());
-document.getElementById("closeModalLoja").addEventListener("click", fecharModalLoja);
-document.getElementById("cancelarModalLoja").addEventListener("click", fecharModalLoja);
-function fecharModalToken() { document.getElementById("modalToken").style.display = "none"; }
-document.getElementById("closeModalToken").addEventListener("click", fecharModalToken);
-document.getElementById("fecharModalToken").addEventListener("click", () => { fecharModalToken(); carregarLojas(); });
-document.getElementById("btnCopiarToken").addEventListener("click", () => {
-  navigator.clipboard.writeText(document.getElementById("tokenGerado").textContent).then(() => showToast("Token copiado!"));
+document.getElementById("btnNovaLoja").addEventListener("click", () => _abrirModalLoja());
+document.getElementById("closeModalLoja").addEventListener("click", () => document.getElementById("modalLoja").style.display = "none");
+document.getElementById("cancelarModalLoja").addEventListener("click", () => document.getElementById("modalLoja").style.display = "none");
+document.getElementById("closeModalLojaToken").addEventListener("click", () => document.getElementById("modalLojaToken").style.display = "none");
+document.getElementById("fecharModalLojaToken").addEventListener("click", () => { document.getElementById("modalLojaToken").style.display = "none"; carregarLojas(); });
+document.getElementById("btnCopiarLojaToken").addEventListener("click", () => {
+  navigator.clipboard.writeText(document.getElementById("lojaTokenValor").textContent).then(() => showToast("Token copiado!"));
 });
 
 document.getElementById("formLoja").addEventListener("submit", async (e) => {
@@ -2386,8 +2379,8 @@ document.getElementById("formLoja").addEventListener("submit", async (e) => {
     nome: document.getElementById("lNome").value.trim(),
     pdv_nome: document.getElementById("lPdvNome").value.trim() || undefined,
   };
-  const url = lojaEditandoId ? `/api/v1/lojas/${lojaEditandoId}` : "/api/v1/lojas";
-  const method = lojaEditandoId ? "PUT" : "POST";
+  const url = _lojaEditandoId ? `/api/v1/lojas/${_lojaEditandoId}` : "/api/v1/lojas";
+  const method = _lojaEditandoId ? "PUT" : "POST";
   const resp = await apiFetch(url, { method, body: JSON.stringify(body) });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
@@ -2395,18 +2388,16 @@ document.getElementById("formLoja").addEventListener("submit", async (e) => {
     erro.hidden = false;
     return;
   }
-  fecharModalLoja();
-  if (!lojaEditandoId) {
+  document.getElementById("modalLoja").style.display = "none";
+  if (!_lojaEditandoId) {
     const data = await resp.json();
     showToast("Loja criada!");
-    mostrarToken(data.api_token);
+    _mostrarLojaToken(data.api_token, false);
   } else {
     showToast("Loja atualizada.");
     carregarLojas();
   }
 });
-
-verificarAuth();
 
 // Sino de notificação → navegar direto para Alertas
 document.querySelector(".notification-button")?.addEventListener("click", () => {

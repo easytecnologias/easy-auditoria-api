@@ -102,6 +102,9 @@
             <button class="nav-item nav-sub-item" data-view="lojas" id="navLojas" style="display:none">
               <i data-lucide="store"></i><span>Lojas</span>
             </button>
+            <button class="nav-item nav-sub-item" data-view="pdvs" id="navPdvs" style="display:none">
+              <i data-lucide="monitor"></i><span>PDVs</span>
+            </button>
           </div>
         </div>
         <button class="nav-item" id="sidebarLogoutBtn" style="width:100%;justify-content:flex-start;gap:10px;color:#c92a2a">
@@ -299,35 +302,6 @@
                 </tr>
               </thead>
               <tbody id="usuariosTable"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- View: Lojas -->
-      <section class="workspace" id="viewLojas" style="display:none">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">Configurações</p>
-            <h1>Lojas</h1>
-            <p>Cadastre lojas e gere os tokens para o instalador PDV.</p>
-          </div>
-          <button class="primary-action" id="btnNovaLoja"><i data-lucide="plus"></i> Nova loja</button>
-        </div>
-        <div class="alerts-panel" style="margin-top:0">
-          <div class="table-wrap">
-            <table class="users-table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>ID</th>
-                  <th>Descrição PDV</th>
-                  <th>Token instalador</th>
-                  <th>Criado em</th>
-                  <th aria-label="Ações"></th>
-                </tr>
-              </thead>
-              <tbody id="lojasTable"></tbody>
             </table>
           </div>
         </div>
@@ -607,6 +581,35 @@
       </section>
 
       <!-- View: PDVs -->
+      <!-- View: Lojas -->
+      <section class="workspace" id="viewLojas" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>Lojas</h1>
+            <p>Cadastre lojas e gere os tokens para o instalador PDV.</p>
+          </div>
+          <button class="primary-action" id="btnNovaLoja"><i data-lucide="plus"></i> Nova loja</button>
+        </div>
+        <div class="alerts-panel" style="margin-top:0">
+          <div class="table-wrap">
+            <table class="users-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>ID</th>
+                  <th>Descrição PDV</th>
+                  <th>Token</th>
+                  <th>Criado em</th>
+                  <th aria-label="Ações"></th>
+                </tr>
+              </thead>
+              <tbody id="lojasTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="workspace" id="viewPdvs" style="display:none">
         <div class="page-heading">
           <div>
@@ -658,24 +661,17 @@
     </div>
   </div>
 
-  <!-- Modal: Token (criação e regeneração) -->
+  <!-- Modal: Token revelado -->
   <div id="modalToken" class="modal-backdrop" style="display:none">
-    <div class="user-modal" style="max-width:480px">
+    <div class="user-modal" style="max-width:460px">
       <div class="modal-header">
-        <div><p class="eyebrow">Instalação</p><h2 id="modalTokenTitulo">Token gerado</h2></div>
+        <div><p class="eyebrow">Configurações</p><h2>Token gerado</h2></div>
         <button id="closeModalToken" class="icon-button"><i data-lucide="x"></i></button>
       </div>
-      <p id="modalTokenDesc" style="margin:0 0 8px;font-size:13px;color:var(--muted)">Copie o token abaixo e use no instalador PDV. Ele não será exibido novamente.</p>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
-        <code id="tokenGerado" style="flex:1;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;word-break:break-all"></code>
-        <button id="btnCopiarToken" class="secondary-action" style="white-space:nowrap"><i data-lucide="copy"></i> Copiar</button>
-      </div>
-      <div id="tokenInstaladorBox" style="background:#f0fff4;border:1px solid #b2f2bb;border-radius:8px;padding:12px;font-size:12px;margin-bottom:16px">
-        <strong>No instalador, informe:</strong><br>
-        AUDITORIA_API_TOKEN=<span id="tokenGeradoInline" style="word-break:break-all"></span>
-      </div>
-      <div class="modal-actions">
-        <button id="fecharModalToken" class="primary-action" style="width:100%">Entendido</button>
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Copie este token agora. Ele não será exibido completo novamente.</p>
+      <div class="token-reveal-box">
+        <code id="tokenRevelado"></code>
+        <button type="button" id="btnCopiarTokenRevelado" class="primary-action" style="margin-top:14px;width:100%"><i data-lucide="copy"></i> Copiar token</button>
       </div>
     </div>
   </div>
@@ -757,6 +753,27 @@
           <button type="submit" class="primary-action" id="btnSalvarLoja">Criar loja</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: Token da loja (criação e regeneração) -->
+  <div id="modalLojaToken" class="modal-backdrop" style="display:none">
+    <div class="user-modal" style="max-width:480px">
+      <div class="modal-header">
+        <div><p class="eyebrow">Instalação</p><h2 id="modalLojaTokenTitulo">Token gerado</h2></div>
+        <button id="closeModalLojaToken" class="icon-button"><i data-lucide="x"></i></button>
+      </div>
+      <p id="modalLojaTokenDesc" style="margin:0 0 8px;font-size:13px;color:var(--muted)">Copie o token e use no instalador PDV. Não será exibido novamente.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+        <code id="lojaTokenValor" style="flex:1;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px;word-break:break-all"></code>
+        <button id="btnCopiarLojaToken" class="secondary-action" style="white-space:nowrap"><i data-lucide="copy"></i> Copiar</button>
+      </div>
+      <div id="lojaTokenInstalador" style="background:#f0fff4;border:1px solid #b2f2bb;border-radius:8px;padding:12px;font-size:12px;margin-bottom:16px">
+        <strong>No instalador:</strong> AUDITORIA_API_TOKEN=<span id="lojaTokenInline" style="word-break:break-all"></span>
+      </div>
+      <div class="modal-actions">
+        <button id="fecharModalLojaToken" class="primary-action" style="width:100%">Entendido</button>
+      </div>
     </div>
   </div>
 
