@@ -726,22 +726,28 @@ document.getElementById("lojaFilterButton").addEventListener("click", async () =
       const nomeEl = document.getElementById("topbarLojaNome");
       const todasChecked = !LOJA || lojas.every(l => l.id !== LOJA);
       lista.innerHTML =
-        `<label><input type="radio" name="lojaRadio" value="" ${todasChecked?"checked":""}> Todas as lojas</label>` +
+        `<label><input type="checkbox" id="lojaFilterAll" ${todasChecked?"checked":""}> Todas as lojas</label>` +
         `<hr>` +
         (lojas.map(l =>
-          `<label><input type="radio" name="lojaRadio" value="${l.id}" ${LOJA===l.id?"checked":""}> ${l.nome}</label>`
+          `<label><input type="checkbox" class="lojaCheck" value="${l.id}" ${LOJA===l.id&&!todasChecked?"checked":""}> ${l.nome}</label>`
         ).join("") || `<label style="color:var(--muted);pointer-events:none">Nenhuma loja cadastrada</label>`);
       if (todasChecked && nomeEl) nomeEl.textContent = "Todas as lojas";
-      lista.querySelectorAll("input[name=lojaRadio]").forEach(inp => {
+      const allChk = lista.querySelector("#lojaFilterAll");
+      allChk?.addEventListener("change", () => {
+        lista.querySelectorAll(".lojaCheck").forEach(c => c.checked = false);
+        LOJA = lojas.length > 0 ? lojas[0].id : (LOJA || "");
+        if (nomeEl) nomeEl.textContent = "Todas as lojas";
+        lista.innerHTML = "";
+        menu.classList.remove("open");
+        carregarAlertas(); carregarVendas(); carregarHealth();
+      });
+      lista.querySelectorAll(".lojaCheck").forEach(inp => {
         inp.addEventListener("change", () => {
-          if (inp.value === "") {
-            LOJA = lojas.length > 0 ? lojas[0].id : (LOJA || "");
-            if (nomeEl) nomeEl.textContent = "Todas as lojas";
-          } else {
-            const loja = lojas.find(l => l.id === inp.value);
-            LOJA = inp.value;
-            if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
-          }
+          if (allChk) allChk.checked = false;
+          lista.querySelectorAll(".lojaCheck").forEach(c => { if (c !== inp) c.checked = false; });
+          const loja = lojas.find(l => l.id === inp.value);
+          LOJA = inp.value;
+          if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
           lista.innerHTML = "";
           menu.classList.remove("open");
           carregarAlertas(); carregarVendas(); carregarHealth();
