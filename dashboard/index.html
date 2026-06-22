@@ -162,6 +162,7 @@
         </div>
 
         <section class="metrics" aria-label="Indicadores operacionais">
+          <!-- Operação -->
           <article>
             <div class="metric-icon green"><i data-lucide="monitor-check"></i></div>
             <div><span>PDVs monitorados</span><strong id="metricPdvsTotal">0 <small id="metricPdvsOnline">/ 0 online</small></strong></div>
@@ -182,9 +183,18 @@
               <small id="metricItensCaixaDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px"></small>
             </div>
           </article>
+          <!-- IA / Auditoria -->
           <article>
             <div class="metric-icon red"><i data-lucide="triangle-alert"></i></div>
             <div><span>Alertas pendentes</span><strong id="metricAlertasPendentes">0 <small id="metricAlertasCriticos">0 críticos</small></strong></div>
+          </article>
+          <article>
+            <div class="metric-icon amber"><i data-lucide="hourglass"></i></div>
+            <div>
+              <span>Fila IA</span>
+              <strong id="metricIAFila">—</strong>
+              <small id="metricIAFilaDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">aguardando…</small>
+            </div>
           </article>
           <article>
             <div class="metric-icon amber"><i data-lucide="check-circle"></i></div>
@@ -201,14 +211,6 @@
               <strong id="metricIATempo">—</strong>
               <small id="metricIATempoDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">aguardando dados…</small>
               <small id="metricIATempoMinMax" style="display:block;font-size:9px;color:var(--muted);margin-top:1px"></small>
-            </div>
-          </article>
-          <article>
-            <div class="metric-icon amber"><i data-lucide="hourglass"></i></div>
-            <div>
-              <span>Fila IA</span>
-              <strong id="metricIAFila">—</strong>
-              <small id="metricIAFilaDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">aguardando…</small>
             </div>
           </article>
         </section>
