@@ -1,6 +1,7 @@
-const LOJA = "loja-106";
+let LOJA = (window.APP_CONFIG || {}).LOJA || "loja-106";
 const REFRESH_INTERVAL_MS = 15000;
 const TOKEN_KEY = "ea_token";
+const USUARIO_KEY = "ea_usuario";
 
 // ── Auth ──────────────────────────────────────────────
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
@@ -47,6 +48,9 @@ function mostrarLogin() {
 function mostrarApp(usuario) {
   document.getElementById("loginScreen").hidden = true;
   document.getElementById("appShell").hidden = false;
+  // Usar loja_id do usuário; admin sem loja usa o config.js
+  if (usuario.loja_id) LOJA = usuario.loja_id;
+  localStorage.setItem(USUARIO_KEY, JSON.stringify(usuario));
   const iniciais = usuario.nome.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
   const perfis = { admin: "Administrador", supervisor: "Supervisor", operador: "Operador" };
   document.getElementById("profileAvatar").textContent = iniciais;
