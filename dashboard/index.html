@@ -102,9 +102,6 @@
             <button class="nav-item nav-sub-item" data-view="lojas" id="navLojas" style="display:none">
               <i data-lucide="store"></i><span>Lojas</span>
             </button>
-            <button class="nav-item nav-sub-item" data-view="pdvs" id="navPdvs" style="display:none">
-              <i data-lucide="monitor"></i><span>PDVs</span>
-            </button>
           </div>
         </div>
         <button class="nav-item" id="sidebarLogoutBtn" style="width:100%;justify-content:flex-start;gap:10px;color:#c92a2a">
@@ -610,70 +607,7 @@
         </div>
       </section>
 
-      <section class="workspace" id="viewPdvs" style="display:none">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">Configurações</p>
-            <h1>PDVs cadastrados</h1>
-            <p>Gerencie as lojas e seus tokens de integração com o bridge.</p>
-          </div>
-          <button class="primary-action" id="btnNovoPdv"><i data-lucide="plus"></i> Novo PDV</button>
-        </div>
-        <div class="alerts-panel" style="margin-top:0">
-          <div class="table-wrap">
-            <table class="pdvs-table">
-              <thead>
-                <tr>
-                  <th>PDV</th>
-                  <th>Loja</th>
-                  <th>Token de API</th>
-                  <th>Criado em</th>
-                  <th aria-label="Ações"></th>
-                </tr>
-              </thead>
-              <tbody id="pdvsTable"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
     </main>
-  </div>
-
-  <!-- Modal: PDV -->
-  <div id="modalPdv" class="modal-backdrop" style="display:none">
-    <div class="user-modal" style="max-width:460px">
-      <div class="modal-header">
-        <div><p class="eyebrow">Configurações</p><h2 id="modalPdvTitulo">Novo PDV</h2></div>
-        <button id="closeModalPdv" class="icon-button"><i data-lucide="x"></i></button>
-      </div>
-      <form id="formPdv">
-        <div class="form-row">
-          <label>Nome do PDV<input id="pPdvNome" type="text" required placeholder="Ex: PDV 1"></label>
-          <label>Nome da Loja<input id="pNome" type="text" required placeholder="Ex: Loja 106"></label>
-        </div>
-        <label id="pIdLabel">ID (interno)<input id="pId" type="text" required placeholder="Ex: loja-106-pdv1" pattern="[a-z0-9\-]+" title="Letras minúsculas, números e hífen"></label>
-        <p id="modalPdvErro" class="login-error" hidden></p>
-        <div class="modal-actions">
-          <button type="button" id="cancelarModalPdv" class="secondary-action">Cancelar</button>
-          <button type="submit" class="primary-action">Salvar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal: Token revelado -->
-  <div id="modalToken" class="modal-backdrop" style="display:none">
-    <div class="user-modal" style="max-width:460px">
-      <div class="modal-header">
-        <div><p class="eyebrow">Configurações</p><h2>Token gerado</h2></div>
-        <button id="closeModalToken" class="icon-button"><i data-lucide="x"></i></button>
-      </div>
-      <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Copie este token agora. Ele não será exibido completo novamente.</p>
-      <div class="token-reveal-box">
-        <code id="tokenRevelado"></code>
-        <button type="button" id="btnCopiarTokenRevelado" class="primary-action" style="margin-top:14px;width:100%"><i data-lucide="copy"></i> Copiar token</button>
-      </div>
-    </div>
   </div>
 
   <!-- Modal: Criar / Editar usuário -->

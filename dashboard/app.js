@@ -57,7 +57,6 @@ function mostrarApp(usuario) {
   }
   if (usuario.perfil === "admin") {
     document.getElementById("navLojas").style.display = "";
-    document.getElementById("navPdvs").style.display = "";
   }
   lucide.createIcons();
 }
@@ -660,7 +659,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewLojas", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
+const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -674,7 +673,6 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
       const el = document.getElementById(id);
       const show = (id === "viewUsers" && view === "users") ||
                    (id === "viewLojas" && view === "lojas") ||
-                   (id === "viewPdvs" && view === "pdvs") ||
                    (id === "viewPdvCards" && view === "terminals") ||
                    (id === "viewReceipts" && view === "receipts") ||
                    (id === "viewConsultar" && view === "consultar") ||
@@ -685,7 +683,6 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     if (mainWorkspace) mainWorkspace.style.display = isSubView ? "none" : "";
     if (view === "users") carregarUsuarios();
     else if (view === "lojas") carregarLojas();
-    else if (view === "pdvs") carregarPdvs();
     else if (view === "terminals") carregarCardsPdv();
     else if (view === "receipts") iniciarViewCupons();
     else if (view === "consultar") iniciarViewConsultar();
@@ -1765,135 +1762,6 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
 });
 
 // ── PDVs ───────────────────────────────────────────────────────────────────────
-let pdvEditandoId = null;
-
-async function carregarPdvs() {
-  const resp = await apiFetch("/api/v1/lojas");
-  if (!resp.ok) return;
-  const lojas = await resp.json();
-  const tbody = document.getElementById("pdvsTable");
-  if (lojas.length === 0) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">Nenhum PDV cadastrado.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = lojas.map(l => {
-    const mask = `****${l.api_token.slice(-8)}`;
-    const data = (l.criado_em || "").slice(0, 10);
-    return `
-    <tr>
-      <td><strong>${l.pdv_nome || l.id}</strong></td>
-      <td>${l.nome}</td>
-      <td>
-        <div class="token-cell">
-          <code class="token-code">${mask}</code>
-          <button class="icon-button" data-action="copy" data-token="${l.api_token}" title="Copiar token completo"><i data-lucide="copy"></i></button>
-          <button class="icon-button" data-action="regen" data-id="${l.id}" title="Regenerar token"><i data-lucide="refresh-cw"></i></button>
-        </div>
-      </td>
-      <td>${data}</td>
-      <td>
-        <div class="row-actions">
-          <button data-action="edit" data-id="${l.id}" data-nome="${l.nome}" data-pdvnome="${l.pdv_nome || ''}" title="Editar"><i data-lucide="pencil"></i></button>
-          <button data-action="delete" data-id="${l.id}" data-nome="${l.nome}" title="Excluir"><i data-lucide="trash-2"></i></button>
-        </div>
-      </td>
-    </tr>`;
-  }).join("");
-
-  tbody.querySelectorAll("button[data-action]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const action = btn.dataset.action;
-      if (action === "copy") {
-        await navigator.clipboard.writeText(btn.dataset.token);
-        showToast("Token copiado!");
-      } else if (action === "regen") {
-        if (!confirm(`Regenerar token de "${btn.dataset.id}"?\nO bridge atual vai parar de funcionar até ser atualizado.`)) return;
-        const resp = await apiFetch(`/api/v1/lojas/${btn.dataset.id}/token`, { method: "POST" });
-        if (resp.ok) {
-          const data = await resp.json();
-          mostrarTokenRevelado(data.api_token);
-          carregarPdvs();
-        }
-      } else if (action === "edit") {
-        abrirModalPdv({ id: btn.dataset.id, nome: btn.dataset.nome, pdv_nome: btn.dataset.pdvnome });
-      } else if (action === "delete") {
-        if (!confirm(`Excluir PDV "${btn.dataset.nome}"?\nEsta ação não pode ser desfeita.`)) return;
-        const resp = await apiFetch(`/api/v1/lojas/${btn.dataset.id}`, { method: "DELETE" });
-        if (!resp.ok) {
-          const data = await resp.json();
-          showToast(data.detail || "Erro ao excluir.");
-        } else {
-          showToast("PDV excluído.");
-          carregarPdvs();
-        }
-      }
-    });
-  });
-  lucide.createIcons();
-}
-
-function mostrarTokenRevelado(token) {
-  document.getElementById("tokenRevelado").textContent = token;
-  document.getElementById("modalToken").style.display = "flex";
-  lucide.createIcons();
-}
-
-function abrirModalPdv(pdv = null) {
-  pdvEditandoId = pdv ? pdv.id : null;
-  document.getElementById("modalPdvTitulo").textContent = pdv ? "Editar PDV" : "Novo PDV";
-  document.getElementById("pPdvNome").value = pdv?.pdv_nome || "";
-  document.getElementById("pNome").value = pdv?.nome || "";
-  document.getElementById("pId").value = pdv?.id || "";
-  const idLabel = document.getElementById("pIdLabel");
-  idLabel.style.display = pdv ? "none" : "flex";
-  document.getElementById("pId").required = !pdv;
-  document.getElementById("modalPdvErro").hidden = true;
-  document.getElementById("modalPdv").style.display = "flex";
-  lucide.createIcons();
-}
-
-function fecharModalPdv() { document.getElementById("modalPdv").style.display = "none"; }
-
-document.getElementById("btnNovoPdv").addEventListener("click", () => abrirModalPdv());
-document.getElementById("closeModalPdv").addEventListener("click", fecharModalPdv);
-document.getElementById("cancelarModalPdv").addEventListener("click", fecharModalPdv);
-document.getElementById("closeModalToken").addEventListener("click", () => {
-  document.getElementById("modalToken").style.display = "none";
-});
-document.getElementById("btnCopiarTokenRevelado").addEventListener("click", async () => {
-  const token = document.getElementById("tokenRevelado").textContent;
-  await navigator.clipboard.writeText(token);
-  showToast("Token copiado!");
-});
-
-document.getElementById("formPdv").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const erro = document.getElementById("modalPdvErro");
-  erro.hidden = true;
-  const isNovo = !pdvEditandoId;
-  const body = isNovo
-    ? { id: document.getElementById("pId").value, nome: document.getElementById("pNome").value, pdv_nome: document.getElementById("pPdvNome").value }
-    : { nome: document.getElementById("pNome").value, pdv_nome: document.getElementById("pPdvNome").value };
-  const resp = await apiFetch(
-    isNovo ? "/api/v1/lojas" : `/api/v1/lojas/${pdvEditandoId}`,
-    { method: isNovo ? "POST" : "PUT", body: JSON.stringify(body) }
-  );
-  if (!resp.ok) {
-    const data = await resp.json();
-    erro.textContent = data.detail || "Erro ao salvar.";
-    erro.hidden = false;
-    return;
-  }
-  fecharModalPdv();
-  if (isNovo) {
-    const data = await resp.json();
-    mostrarTokenRevelado(data.api_token);
-  } else {
-    showToast("PDV atualizado.");
-  }
-  carregarPdvs();
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // TELA CONSULTAR
 // ═══════════════════════════════════════════════════════════════════════════
