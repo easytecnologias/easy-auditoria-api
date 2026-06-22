@@ -804,6 +804,32 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        # ── /stats → total de itens passados no caixa no dia
+        if path == '/stats':
+            if not self._check_token(params): return
+            date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
+            try:
+                dt = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                self.send_error(400, "Data invalida")
+                return
+            cupons = _listar_cupons(dt)
+            total_itens = sum(c.get('itens', 0) for c in cupons)
+            total_cupons = len([c for c in cupons if c.get('fechou')])
+            stats = {
+                "date": date_str,
+                "total_itens": total_itens,
+                "total_cupons": total_cupons,
+            }
+            body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == '/cupons':
             if not self._check_token(params): return
             date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]

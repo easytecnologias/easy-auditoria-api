@@ -2168,6 +2168,21 @@ function renderAlertas2() {
     _alertsPagAtual, filtrados.length, p => { _alertsPagAtual = p; renderAlertas2(); });
 }
 
+async function carregarItensCaixa() {
+  try {
+    const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+    const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+    const today    = new Date().toISOString().slice(0, 10);
+    const r = await fetch(`${STREAMER}/stats?date=${today}&token=${TOKEN}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el  = document.getElementById("metricItensCaixa");
+    const det = document.getElementById("metricItensCaixaDetalhe");
+    if (el) el.textContent = (d.total_itens ?? "—").toLocaleString("pt-BR");
+    if (det) det.textContent = `em ${d.total_cupons || 0} cupons`;
+  } catch(e) {}
+}
+
 async function carregarStatsIA() {
   try {
     const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
@@ -2209,6 +2224,8 @@ function iniciarApp() {
   setInterval(carregarHealth, REFRESH_INTERVAL_MS);
   carregarStatsIA();
   setInterval(carregarStatsIA, 30000);
+  carregarItensCaixa();
+  setInterval(carregarItensCaixa, 30000);
   setInterval(() => {
     if (isHoje(selectedDate)) carregarVendas();
   }, REFRESH_INTERVAL_MS);
