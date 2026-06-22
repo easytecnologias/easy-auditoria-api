@@ -56,6 +56,9 @@ function mostrarApp(usuario) {
   document.getElementById("profileAvatar").textContent = iniciais;
   document.getElementById("profileName").textContent = usuario.nome;
   document.getElementById("profileRole").textContent = perfis[usuario.perfil] || usuario.perfil;
+  if (usuario.perfil === "admin") {
+    document.getElementById("navLojas").style.display = "";
+  }
   if (usuario.perfil === "admin" || usuario.perfil === "supervisor") {
     document.getElementById("navUsuarios").style.display = "";
   }
@@ -663,7 +666,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
+const VIEWS = ["viewUsers", "viewLojas", "viewPdvs", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -676,6 +679,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     VIEWS.forEach(id => {
       const el = document.getElementById(id);
       const show = (id === "viewUsers" && view === "users") ||
+                   (id === "viewLojas" && view === "lojas") ||
                    (id === "viewPdvs" && view === "pdvs") ||
                    (id === "viewPdvCards" && view === "terminals") ||
                    (id === "viewReceipts" && view === "receipts") ||
@@ -686,6 +690,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     });
     if (mainWorkspace) mainWorkspace.style.display = isSubView ? "none" : "";
     if (view === "users") carregarUsuarios();
+    else if (view === "lojas") carregarLojas();
     else if (view === "pdvs") carregarPdvs();
     else if (view === "terminals") carregarCardsPdv();
     else if (view === "receipts") iniciarViewCupons();
@@ -2276,6 +2281,129 @@ function iniciarApp() {
     if (isHoje(selectedDate)) carregarVendas();
   }, REFRESH_INTERVAL_MS);
 }
+
+// ── Lojas ──────────────────────────────────────────────────────────────
+let lojaEditandoId = null;
+
+async function carregarLojas() {
+  const resp = await apiFetch("/api/v1/lojas");
+  if (!resp.ok) return;
+  const lojas = await resp.json();
+  const tbody = document.getElementById("lojasTable");
+  if (lojas.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhuma loja cadastrada.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lojas.map(l => {
+    const token = l.api_token || "";
+    const tokenMask = token ? token.slice(0, 8) + "••••••••••••••••" + token.slice(-4) : "—";
+    const criado = l.criado_em ? new Date(l.criado_em).toLocaleDateString("pt-BR") : "—";
+    return `<tr>
+      <td><strong>${l.nome}</strong></td>
+      <td><code style="font-size:12px">${l.id}</code></td>
+      <td>${l.pdv_nome || '<span style="color:var(--muted)">—</span>'}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <code style="font-size:11px;color:var(--muted)">${tokenMask}</code>
+          <button data-action="copytoken" data-token="${token}" title="Copiar token" style="padding:2px 6px">
+            <i data-lucide="copy" style="width:14px;height:14px"></i>
+          </button>
+        </div>
+      </td>
+      <td>${criado}</td>
+      <td>
+        <div class="row-actions">
+          <button data-action="edit" data-id="${l.id}" title="Editar"><i data-lucide="pencil"></i></button>
+          <button data-action="del" data-id="${l.id}" data-nome="${l.nome}" title="Excluir"><i data-lucide="trash-2" style="color:#c92a2a"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("button[data-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.action === "edit") {
+        const l = lojas.find(x => x.id === btn.dataset.id);
+        abrirModalLoja(l);
+      } else if (btn.dataset.action === "del") {
+        if (confirm(`Excluir loja "${btn.dataset.nome}"? Esta ação não pode ser desfeita.`))
+          excluirLoja(btn.dataset.id);
+      } else if (btn.dataset.action === "copytoken") {
+        navigator.clipboard.writeText(btn.dataset.token).then(() => showToast("Token copiado!"));
+      }
+    });
+  });
+  lucide.createIcons();
+}
+
+function abrirModalLoja(loja = null) {
+  lojaEditandoId = loja ? loja.id : null;
+  document.getElementById("modalLojaTitulo").textContent = loja ? "Editar loja" : "Nova loja";
+  document.getElementById("lId").value = loja?.id || "";
+  document.getElementById("lId").disabled = !!loja;
+  document.getElementById("lNome").value = loja?.nome || "";
+  document.getElementById("lPdvNome").value = loja?.pdv_nome || "";
+  document.getElementById("btnSalvarLoja").textContent = loja ? "Salvar" : "Criar loja";
+  document.getElementById("modalLojaErro").hidden = true;
+  document.getElementById("modalLoja").style.display = "flex";
+  lucide.createIcons();
+}
+
+function fecharModalLoja() {
+  document.getElementById("modalLoja").style.display = "none";
+}
+
+function mostrarToken(token) {
+  document.getElementById("tokenGerado").textContent = token;
+  document.getElementById("tokenGeradoInline").textContent = token;
+  document.getElementById("modalToken").style.display = "flex";
+  lucide.createIcons();
+}
+
+async function excluirLoja(id) {
+  const resp = await apiFetch(`/api/v1/lojas/${id}`, { method: "DELETE" });
+  if (resp.ok) { showToast("Loja excluída."); carregarLojas(); }
+  else showToast("Erro ao excluir loja.");
+}
+
+document.getElementById("btnNovaLoja").addEventListener("click", () => abrirModalLoja());
+document.getElementById("closeModalLoja").addEventListener("click", fecharModalLoja);
+document.getElementById("cancelarModalLoja").addEventListener("click", fecharModalLoja);
+document.getElementById("closeModalToken").addEventListener("click", () => document.getElementById("modalToken").style.display = "none");
+document.getElementById("fecharModalToken").addEventListener("click", () => { document.getElementById("modalToken").style.display = "none"; carregarLojas(); });
+document.getElementById("btnCopiarToken").addEventListener("click", () => {
+  const t = document.getElementById("tokenGerado").textContent;
+  navigator.clipboard.writeText(t).then(() => showToast("Token copiado!"));
+});
+
+document.getElementById("formLoja").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const erro = document.getElementById("modalLojaErro");
+  erro.hidden = true;
+  const body = {
+    id: document.getElementById("lId").value.trim().toLowerCase(),
+    nome: document.getElementById("lNome").value.trim(),
+    pdv_nome: document.getElementById("lPdvNome").value.trim() || undefined,
+  };
+  const url = lojaEditandoId ? `/api/v1/lojas/${lojaEditandoId}` : "/api/v1/lojas";
+  const method = lojaEditandoId ? "PUT" : "POST";
+  const resp = await apiFetch(url, { method, body: JSON.stringify(body) });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    erro.textContent = data.detail || "Erro ao salvar.";
+    erro.hidden = false;
+    return;
+  }
+  fecharModalLoja();
+  if (!lojaEditandoId) {
+    const data = await resp.json();
+    showToast("Loja criada!");
+    mostrarToken(data.api_token);
+  } else {
+    showToast("Loja atualizada.");
+    carregarLojas();
+  }
+});
 
 verificarAuth();
 
