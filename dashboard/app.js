@@ -2171,22 +2171,25 @@ function renderAlertas2() {
 function _triggerPipeline() {
   const itens = window._pipeItens;
   const s = window._pipeStats || {};
-  atualizarPipeline(itens, s.fila, s.analisados, s.ok, s.alertas);
+  atualizarPipeline(itens, s.fila, s.analisados, s.ok, s.alertas, s.media_s, s.ultimo_s);
 }
 
-function atualizarPipeline(itens, fila, analisados, ok, alertas) {
+function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set("pipeItens",    itens   != null ? Number(itens).toLocaleString("pt-BR") : "—");
-  set("pipeFila",     fila    != null ? fila    : "—");
+  set("pipeItens",      itens     != null ? Number(itens).toLocaleString("pt-BR") : "—");
+  set("pipeFila",       fila      != null ? fila      : "—");
   set("pipeAnalisados", analisados != null ? analisados : "—");
-  set("pipeOk",       ok      != null ? ok      : "—");
-  set("pipeAlertas",  alertas != null ? alertas : "—");
+  set("pipeOk",         ok        != null ? ok        : "—");
+  set("pipeAlertas",    alertas   != null ? alertas   : "—");
   const pctAnalisados = itens > 0 ? ((analisados / itens) * 100).toFixed(1) : 0;
   const pctOk         = analisados > 0 ? ((ok / analisados) * 100).toFixed(1) : 0;
   const pctAlertas    = analisados > 0 ? ((alertas / analisados) * 100).toFixed(1) : 0;
   set("pipeAnalisadosPct", `${pctAnalisados}% do total`);
-  set("pipeOkPct",     `${pctOk}%`);
+  set("pipeOkPct",      `${pctOk}%`);
   set("pipeAlertasPct", `${pctAlertas}%`);
+  if (ultimo_s || media_s) {
+    set("pipeTempo", `⏱ ${ultimo_s || media_s}s/item`);
+  }
   lucide.createIcons();
 }
 
@@ -2243,7 +2246,7 @@ async function carregarStatsIA() {
         ? `${fila} aguardando · ${analisados} analisados`
         : `fila vazia · ${analisados} analisados`;
     }
-    window._pipeStats = { fila: d.fila || 0, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0 };
+    window._pipeStats = { fila: d.fila || 0, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, media_s: d.media_s, ultimo_s: d.ultimo_s };
     _triggerPipeline();
   } catch(e) {}
 }
