@@ -861,8 +861,21 @@ tbody tr:hover { background: #fbfcfd; }
 .rpt-rank-val { font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 .rpt-rank-badge { background: #fff5f5; color: #c92a2a; border: 1px solid #ffc9c9; border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 700; flex-shrink: 0; }
 @media (max-width: 700px) {
-  .rpt-grid { grid-template-columns: 1fr; }
+  .rpt-grid { grid-template-columns: 1fr; gap: 12px; }
   .rpt-card--wide { grid-column: 1; }
+  .rpt-card { padding: 14px; }
+  .rpt-kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .rpt-kpi { padding: 12px; }
+  .rpt-kpi-value { font-size: 20px; }
+  /* Gráfico de horas: mostrar só horário com vendas, fonte menor */
+  .rpt-chart-bars { gap: 3px; height: 100px; }
+  .rpt-col-label { font-size: 8px; }
+  /* Barras horizontais: label menor */
+  .rpt-bar-label { width: 80px; font-size: 10px; }
+  /* Produtos: 1 coluna no mobile */
+  #rptProdutos > div { grid-template-columns: 1fr !important; }
+  /* Operadores: esconder ticket médio */
+  .rpt-rank-row > div > div:last-child { display: none; }
 }
 
 /* ── Print / PDF ─────────────────────────────────────────────────────────── */
