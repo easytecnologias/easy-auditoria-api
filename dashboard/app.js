@@ -350,7 +350,7 @@ function renderAlerts() {
       const alert = alerts.find(item => item.id === Number(row.dataset.id));
       if (event.target.closest("[data-action='video']")) {
         selectedAlert = alert;
-        openVideo();
+        document.getElementById("videoButton").click();
       } else {
         openDrawer(alert);
       }
@@ -589,6 +589,66 @@ function closeVarDrawer() {
   varDrawer.classList.remove("open");
   varBackdrop.classList.remove("open");
   varDrawer.setAttribute("aria-hidden", "true");
+  // Restaurar tab bar para próxima abertura (pode ter sido ocultada pelo vídeo genérico)
+  const tabBar = varDrawer.querySelector(".var-tab-bar");
+  if (tabBar) tabBar.style.display = "";
+}
+
+// ── Vídeo genérico no varDrawer (alertas, consultar) ──────────────────────
+function _abrirVideoVarDrawer(titulo, breadcrumb, videoSrc) {
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+
+  document.getElementById("varResultModalTitle").textContent = titulo;
+  document.getElementById("varResultModalBreadcrumb").textContent = breadcrumb;
+
+  // Ocultar tabs, mostrar só vídeo
+  const tabBar = varDrawer.querySelector(".var-tab-bar");
+  if (tabBar) tabBar.style.display = "none";
+
+  const body = document.getElementById("varResultModalBody");
+  body.innerHTML = `
+    <div class="var-inline-player">
+      <video id="varVideoGenerico" controls playsinline webkit-playsinline preload="metadata"
+             style="width:100%;display:none;background:#000"></video>
+      <div id="varVideoGenericoStatus" style="text-align:center;padding:32px;color:var(--muted)">
+        <i data-lucide="loader-circle" style="width:32px;height:32px;animation:spin 1s linear infinite"></i>
+        <p style="margin-top:8px">Gerando vídeo…</p>
+      </div>
+      <div id="varVideoGenericoErr" hidden style="text-align:center;padding:32px;color:var(--muted)">
+        <i data-lucide="video-off" style="width:32px;height:32px"></i>
+        <p style="margin-top:8px">Vídeo não disponível para este evento.</p>
+      </div>
+    </div>`;
+  lucide.createIcons();
+  openVarDrawer();
+
+  const video  = document.getElementById("varVideoGenerico");
+  const status = document.getElementById("varVideoGenericoStatus");
+  const err    = document.getElementById("varVideoGenericoErr");
+
+  const onOk  = () => { status.hidden = true; video.style.display = ""; };
+  const onErr = () => { status.hidden = true; err.hidden = false; };
+
+  const _isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  if (videoSrc.includes('/clip?')) {
+    fetch(videoSrc)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.token) { onErr(); return; }
+        video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
+        video.addEventListener("loadedmetadata", onOk, { once: true });
+        video.addEventListener("error", onErr, { once: true });
+        video.load();
+      })
+      .catch(onErr);
+  } else {
+    video.src = videoSrc;
+    video.addEventListener("loadedmetadata", onOk, { once: true });
+    video.addEventListener("error", onErr, { once: true });
+    video.load();
+  }
 }
 
 function showToast(message) {
@@ -716,7 +776,30 @@ document.getElementById("ignoreButton").addEventListener("click", async () => {
   showToast(`Alerta do cupom ${receipt} ignorado.`);
   closeDrawer();
 });
-document.getElementById("videoButton").addEventListener("click", openVideo);
+document.getElementById("videoButton").addEventListener("click", () => {
+  if (!selectedAlert) return;
+  // Montar URL do vídeo igual ao openVideo mas abrir no varDrawer
+  let videoSrc = null;
+  if (selectedAlert.imageUrl && selectedAlert.imageUrl.startsWith('/streamer/snapshot')) {
+    try {
+      const url   = new URL(selectedAlert.imageUrl, location.href);
+      const ts    = url.searchParams.get('ts');
+      const token = url.searchParams.get('token') || (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
+      if (ts) {
+        const dt    = new Date(ts.replace(' ','T'));
+        const fmt   = d => { const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+        const start = fmt(new Date(dt.getTime() - 15000));
+        const end   = fmt(new Date(dt.getTime() + 15000));
+        const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
+        videoSrc = `${STREAMER}/clip?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${token}`;
+      }
+    } catch(e) {}
+  }
+  if (!videoSrc) videoSrc = selectedAlert.videoUrl;
+  if (!videoSrc) { showToast("Sem vídeo para este alerta."); return; }
+  const breadcrumb = `${selectedAlert.pdv || ''} · Cupom ${selectedAlert.receipt || ''}`;
+  _abrirVideoVarDrawer(selectedAlert.product || "Vídeo do evento", breadcrumb, videoSrc);
+});
 document.getElementById("closeVideo").addEventListener("click", () => {
   document.getElementById("videoModal").classList.remove("open");
   resetVideo();
@@ -1538,9 +1621,10 @@ function renderVarBody() {
       card.addEventListener("click", () => {
         const alert = varResultLista.find(a => a.id === Number(card.dataset.id));
         if (!alert) return;
+        selectedAlert = alert;
         closeVarDrawer();
         openDrawer(alert);
-        openVideo();
+        setTimeout(() => document.getElementById("videoButton").click(), 100);
       });
     });
   }
@@ -2216,7 +2300,7 @@ function renderAlertas2() {
     row.addEventListener("click", event => {
       const a = alerts.find(x => x.id === Number(row.dataset.id));
       if (!a) return;
-      if (event.target.closest("[data-action='video']")) { selectedAlert = a; openVideo(); }
+      if (event.target.closest("[data-action='video']")) { selectedAlert = a; document.getElementById("videoButton").click(); }
       else { openDrawer(a); }
     });
   });
