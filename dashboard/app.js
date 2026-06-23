@@ -2581,17 +2581,33 @@ function iniciarApp() {
 // ── Relatórios ──────────────────────────────────────────────────────────────
 document.getElementById("btnImprimirRelatorio")?.addEventListener("click", () => window.print());
 
+let _rptTimer = null;
+
+function _iniciarAutoRefreshRelatorios() {
+  if (_rptTimer) clearInterval(_rptTimer);
+  _rptTimer = setInterval(() => {
+    if (document.getElementById("viewReports")?.style.display !== "none") {
+      iniciarViewRelatorios();
+    } else {
+      clearInterval(_rptTimer);
+      _rptTimer = null;
+    }
+  }, 60000); // atualiza a cada 1 minuto
+}
+
 async function iniciarViewRelatorios() {
   const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
   const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
   const date     = selectedDate;
 
-  // Atualizar subtítulo com a data selecionada
+  // Atualizar subtítulo com a data e hora da última atualização
   const sub = document.getElementById("rptSubtitulo");
   if (sub) {
     const d = new Date(date + "T12:00:00");
-    sub.textContent = `Dados de ${d.toLocaleDateString("pt-BR", {weekday:"long", day:"numeric", month:"long"})}`;
+    const agora = new Date().toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"});
+    sub.textContent = `${d.toLocaleDateString("pt-BR", {weekday:"long", day:"numeric", month:"long"})} · atualizado às ${agora}`;
   }
+  _iniciarAutoRefreshRelatorios();
 
   // Buscar cupons e alertas em paralelo
   const [cuponResp, statsResp] = await Promise.all([
