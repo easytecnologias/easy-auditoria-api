@@ -241,6 +241,10 @@ function mudarData(novaData) {
   if (document.getElementById("pdvVarSearch")?.style.display !== "none") {
     _carregarCuponsVar();
   }
+  // Recarregar relatórios se estiver visível
+  if (document.getElementById("viewReports")?.style.display !== "none") {
+    iniciarViewRelatorios();
+  }
 }
 
 function pdvSelecionado(pdv) {
@@ -2570,10 +2574,19 @@ function iniciarApp() {
 }
 
 // ── Relatórios ──────────────────────────────────────────────────────────────
+document.getElementById("btnImprimirRelatorio")?.addEventListener("click", () => window.print());
+
 async function iniciarViewRelatorios() {
   const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
   const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
   const date     = selectedDate;
+
+  // Atualizar subtítulo com a data selecionada
+  const sub = document.getElementById("rptSubtitulo");
+  if (sub) {
+    const d = new Date(date + "T12:00:00");
+    sub.textContent = `Dados de ${d.toLocaleDateString("pt-BR", {weekday:"long", day:"numeric", month:"long"})}`;
+  }
 
   // Buscar cupons e alertas em paralelo
   const [cuponResp, statsResp] = await Promise.all([

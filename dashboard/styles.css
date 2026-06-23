@@ -864,3 +864,15 @@ tbody tr:hover { background: #fbfcfd; }
   .rpt-grid { grid-template-columns: 1fr; }
   .rpt-card--wide { grid-column: 1; }
 }
+
+/* ── Print / PDF ─────────────────────────────────────────────────────────── */
+@media print {
+  .sidebar, .topbar, .page-heading button, #btnImprimirRelatorio,
+  .notification-button, .profile-dropdown, .live-indicator { display: none !important; }
+  .main-area { margin-left: 0 !important; width: 100% !important; }
+  .workspace { padding: 12px !important; }
+  .rpt-card { break-inside: avoid; box-shadow: none !important; }
+  .rpt-card--wide { page-break-before: auto; }
+  body { background: white !important; }
+  @page { margin: 15mm; }
+}
