@@ -428,17 +428,17 @@
           <!-- Formulário compacto -->
           <div class="var-search-box">
             <form id="formVarCupom">
-              <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-                <label class="var-search-label" style="flex:1;min-width:160px">Número do cupom
-                  <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
-                </label>
-                <div class="var-radio-group" style="margin-bottom:6px">
+              <label class="var-search-label">Número do cupom
+                <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
+              </label>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap">
+                <div class="var-radio-group" style="margin:0">
                   <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
                   <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
                 </div>
-                <button type="submit" class="primary-action" style="height:40px;padding:0 20px;white-space:nowrap;margin-bottom:6px"><i data-lucide="search"></i> Buscar</button>
+                <button type="submit" class="primary-action var-search-btn" style="margin:0"><i data-lucide="search"></i> Buscar</button>
               </div>
-              <div id="varItemField" style="display:none;margin-top:8px">
+              <div id="varItemField" style="display:none;margin-top:10px">
                 <label class="var-search-label">Nome ou código do produto
                   <input id="varItemInput" type="text" placeholder="Ex: Café Maratá">
                 </label>
