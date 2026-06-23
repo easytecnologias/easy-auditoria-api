@@ -252,6 +252,59 @@ h2 { margin-bottom: 4px; font-size: 15px; }
 .metrics strong { display: block; font-size: 17px; }
 .metrics small { color: var(--muted); font-size: 9px; font-weight: 500; }
 
+/* ── Pipeline IA ─────────────────────────────────────────────────────────── */
+.pipeline-section {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.pipeline-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin: 0 0 14px;
+}
+.pipeline-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  min-width: 110px;
+  text-align: center;
+  flex: 1;
+}
+.pipeline-step--blue   { background: #e7f5ff; }
+.pipeline-step--amber  { background: #fff9db; }
+.pipeline-step--cyan   { background: #e3fafc; }
+.pipeline-step--green  { background: #ebfbee; }
+.pipeline-step--red    { background: #fff5f5; }
+.pipeline-icon { font-size: 18px; margin-bottom: 2px; }
+.pipeline-step--blue   .pipeline-icon, .pipeline-step--blue   .pipeline-num { color: #1c7ed6; }
+.pipeline-step--amber  .pipeline-icon, .pipeline-step--amber  .pipeline-num { color: #e67700; }
+.pipeline-step--cyan   .pipeline-icon, .pipeline-step--cyan   .pipeline-num { color: #0c8599; }
+.pipeline-step--green  .pipeline-icon, .pipeline-step--green  .pipeline-num { color: #2f9e44; }
+.pipeline-step--red    .pipeline-icon, .pipeline-step--red    .pipeline-num { color: #c92a2a; }
+.pipeline-icon svg { width: 20px; height: 20px; }
+.pipeline-num   { font-size: 22px; font-weight: 700; line-height: 1; }
+.pipeline-label { font-size: 11px; font-weight: 600; color: var(--text); }
+.pipeline-sub   { font-size: 10px; color: var(--muted); }
+.pipeline-arrow { color: var(--muted); flex-shrink: 0; }
+.pipeline-arrow svg { width: 18px; height: 18px; }
+.pipeline-outcomes { display: flex; gap: 8px; flex: 1; }
+.pipeline-outcomes .pipeline-step { flex: 1; }
+
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; }
 .content-grid > *, .analytics-grid > * { min-width: 0; }
 .alerts-panel, .activity-panel, .chart-panel {

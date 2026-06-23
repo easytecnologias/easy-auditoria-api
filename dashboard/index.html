@@ -215,6 +215,50 @@
           </article>
         </section>
 
+        <!-- Pipeline IA -->
+        <div class="pipeline-section">
+          <h3 class="pipeline-title">Pipeline de Auditoria IA</h3>
+          <div class="pipeline-flow">
+            <div class="pipeline-step pipeline-step--blue">
+              <div class="pipeline-icon"><i data-lucide="scan-barcode"></i></div>
+              <div class="pipeline-num" id="pipeItens">—</div>
+              <div class="pipeline-label">Itens no caixa</div>
+              <div class="pipeline-sub">passaram pelo scanner</div>
+            </div>
+            <div class="pipeline-arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="pipeline-step pipeline-step--amber">
+              <div class="pipeline-icon"><i data-lucide="hourglass"></i></div>
+              <div class="pipeline-num" id="pipeFila">—</div>
+              <div class="pipeline-label">Fila IA</div>
+              <div class="pipeline-sub">aguardando 2.5 min</div>
+            </div>
+            <div class="pipeline-arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="pipeline-step pipeline-step--cyan">
+              <div class="pipeline-icon"><i data-lucide="cpu"></i></div>
+              <div class="pipeline-num" id="pipeAnalisados">—</div>
+              <div class="pipeline-label">Analisados</div>
+              <div class="pipeline-sub" id="pipeAnalisadosPct">—% do total</div>
+            </div>
+            <div class="pipeline-arrow pipeline-arrow--split">
+              <i data-lucide="arrow-right"></i>
+            </div>
+            <div class="pipeline-outcomes">
+              <div class="pipeline-step pipeline-step--green">
+                <div class="pipeline-icon"><i data-lucide="check-circle"></i></div>
+                <div class="pipeline-num" id="pipeOk">—</div>
+                <div class="pipeline-label">Aprovados</div>
+                <div class="pipeline-sub" id="pipeOkPct">—%</div>
+              </div>
+              <div class="pipeline-step pipeline-step--red">
+                <div class="pipeline-icon"><i data-lucide="triangle-alert"></i></div>
+                <div class="pipeline-num" id="pipeAlertas">—</div>
+                <div class="pipeline-label">Alertas</div>
+                <div class="pipeline-sub" id="pipeAlertasPct">—%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <section class="content-grid">
           <div class="alerts-panel">
             <div class="section-toolbar">
