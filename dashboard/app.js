@@ -1967,7 +1967,7 @@ async function abrirCupomDrawer(cupomNum) {
         </div>
 
         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-          <button id="btnVerVideoFromReceipt" class="primary-action" style="width:100%;gap:8px"
+          <button id="btnVerVideoFromReceipt" class="primary-action" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px"
             data-cupom="${d.numero}">
             <i data-lucide="play-circle"></i> Ver vídeo da compra
           </button>
