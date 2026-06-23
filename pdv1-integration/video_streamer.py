@@ -790,6 +790,9 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 total_ms = s.get("total_ms", 0)
                 tempos = s.get("tempos", [])
                 media_ms = round(total_ms / total) if total > 0 else 0
+                # Histórico permanente
+                _hf = pathlib.Path("/opt/pdv-visual-auditor/historico_ia.json")
+                h = json.loads(_hf.read_text()) if _hf.exists() else {}
                 stats = {
                     "date": date_str,
                     "aprovados": s.get("ok", 0),
@@ -804,6 +807,9 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "ultimo_s": round(tempos[-1] / 1000, 1) if tempos else 0,
                     "tempos_recentes": [round(t / 1000, 1) for t in tempos[-10:]],
                     "fila": s.get("fila", 0),
+                    "historico_total": h.get("total", 0),
+                    "historico_ok": h.get("ok", 0),
+                    "historico_suspeito": h.get("suspeito", 0),
                 }
             except Exception as e:
                 stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}
