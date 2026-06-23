@@ -2084,7 +2084,7 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
         </td>
         <td>${_fmtQty(c.qty, c.unit)}</td>
         <td style="text-align:right">${_fmtBRL(c.vtotal)}</td>
-        <td style="text-align:right"><button class="btn-ver-item">Ver item</button></td>`;
+        <td style="text-align:center"><button class="icon-button btn-ver-item" title="Ver vídeo do item" style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card)"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button></td>`;
       tr.querySelector(".btn-ver-item").addEventListener("click", e => { e.stopPropagation(); _abrirVideoConsulta(c); });
       tr.addEventListener("click", () => _abrirVideoConsulta(c));
       tbody.appendChild(tr);
