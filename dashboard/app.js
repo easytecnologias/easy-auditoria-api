@@ -597,21 +597,22 @@ function openVideo() {
 
   const _isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-  // Vídeo do streamer — /clip gera MP4 completo
+  // Vídeo do streamer — /clip gera MP4 completo (retorna JSON com token)
   if (videoSrc.includes('/streamer/') && !videoSrc.includes('/api/v1/')) {
-    if (_isMobile && videoSrc.includes('/clip?')) {
-      // Mobile: gerar clipe primeiro, depois reproduzir pelo token
+    if (videoSrc.includes('/clip?')) {
+      // /clip?... retorna {token: "xxx"} — buscar e depois reproduzir /clip/{token}
+      const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
+      const TOKEN = (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
       fetch(videoSrc)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d?.token) { video.hidden = true; unavailable.hidden = false; return; }
-          const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
-          const TOKEN = (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
           video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
           video.load(); video.play().catch(() => {});
         })
         .catch(() => { video.hidden = true; unavailable.hidden = false; });
     } else {
+      // Streaming fMP4 direto (usado pelo desktop em outros contextos)
       video.src = videoSrc; video.load(); video.play().catch(() => {});
     }
   } else {
