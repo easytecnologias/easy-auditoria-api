@@ -1802,9 +1802,9 @@ function _aplicarFiltrosCupons(pagina) {
       <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
       <td><strong>${c.numero}</strong></td>
       <td class="cupons-op">${c.operador || '—'}</td>
-      <td style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="${c.item_top||''}">${c.item_top ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.item_top||''}">${c.item_top ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>'}</td>
       <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
-      <td style="text-align:right;font-weight:600">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
       <td>
         <div style="display:flex;justify-content:flex-end;gap:4px">
           <button class="icon-button cupom-btn-nota" data-cupom="${c.numero}" title="Ver cupom"><i data-lucide="file-text" style="width:16px;height:16px"></i></button>
