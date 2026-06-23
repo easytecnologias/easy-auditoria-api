@@ -2656,11 +2656,12 @@ async function iniciarViewRelatorios() {
   });
   const horas = Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).filter(h=>porHora[h]>0);
   const maxV = Math.max(...horas.map(h=>porHora[h]||0), 1);
+  const BAR_MAX_PX = 100; // altura máxima da barra em px
   document.getElementById("rptVendasHora").innerHTML = horas.map(h => {
-    const pct = Math.round(((porHora[h]||0)/maxV)*100);
+    const px = Math.max(Math.round(((porHora[h]||0)/maxV)*BAR_MAX_PX), 3);
     const temAlerta = alertsPorHora[h] > 0;
-    return `<div class="rpt-col-wrap" title="${h}h · ${fmt(porHora[h]||0)}">
-      <div class="rpt-col ${temAlerta?'has-alert':''}" style="height:${Math.max(pct,2)}%"></div>
+    return `<div class="rpt-col-wrap" title="${h}h · ${fmtBRL(porHora[h]||0)}">
+      <div class="rpt-col ${temAlerta?'has-alert':''}" style="height:${px}px"></div>
       <div class="rpt-col-label">${h}</div>
     </div>`;
   }).join("") || "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
