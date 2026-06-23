@@ -463,7 +463,15 @@ tbody tr:hover { background: #fbfcfd; }
 .event-data div:nth-last-child(-n+2) { border-bottom: 0; }
 .event-data dt { color: var(--muted); font-size: 9px; }
 .event-data dd { margin: 2px 0 0; font-size: 11px; font-weight: 600; }
-.technical-note { display: none; } /* Ocultar nota técnica para ganhar espaço */
+.technical-note { display: none; }
+.ia-diagnostico { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+.ia-diagnostico-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-soft); font-size: 12px; }
+.ia-diagnostico-header svg { width: 14px; height: 14px; color: var(--primary); flex-shrink: 0; }
+.ia-diagnostico-header strong { flex: 1; }
+.ia-diagnostico-body { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ia-linha { display: flex; gap: 8px; font-size: 12px; align-items: baseline; }
+.ia-label { color: var(--muted); white-space: nowrap; min-width: 120px; flex-shrink: 0; }
+.ia-obs { padding-top: 6px; border-top: 1px solid var(--border); margin-top: 2px; }
 .drawer-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); background: white; flex-shrink: 0; }
 .drawer-actions button { display: flex; height: 36px; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; font-size: 10px; font-weight: 700; }
 .drawer-actions svg { width: 16px; }

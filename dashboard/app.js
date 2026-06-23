@@ -496,38 +496,78 @@ function aplicarEvidencia(imageUrl) {
     .catch(() => _renderFrames(FRAME_FALLBACKS.register));
 }
 
+function _parsearAnaliseIA(analysis, note) {
+  // Tenta extrair campos estruturados do texto de comparacao_pdv
+  // Formato: "Cupom: PRODUTO (cat: CAT)\nCLIP: CAT (X%) | SmolVLM: RESULTADO"
+  const result = { produto: "—", categoria: "—", clip: "—", smolvlm: "—", obs: "" };
+  if (!analysis) return result;
+
+  const linhas = analysis.split("\n");
+  for (const linha of linhas) {
+    // "Cupom: Bisc Trakinas (cat: BISCOITO)"
+    const mCupom = linha.match(/Cupom:\s*(.+?)\s*\(cat:\s*([^)]+)\)/i);
+    if (mCupom) { result.produto = mCupom[1].trim(); result.categoria = mCupom[2].trim(); }
+
+    // "CLIP: BISCOITO (45%) | SmolVLM: SUSPICIOUS"
+    const mClip = linha.match(/CLIP:\s*([^\s(]+)\s*\(([^)]+)\)/i);
+    if (mClip) result.clip = `${mClip[1]} (${mClip[2]})`;
+
+    const mVlm = linha.match(/SmolVLM:\s*(.+?)(\s*\(.*\))?\s*$/i);
+    if (mVlm) result.smolvlm = mVlm[1].trim();
+  }
+  if (note) result.obs = note;
+  return result;
+}
+
 function openDrawer(alert) {
   selectedAlert = alert;
-  document.getElementById("drawerTitle").textContent = alert.event;
-  document.getElementById("cameraTime").textContent = alert.time;
-  document.getElementById("detailPdv").textContent = alert.pdv;
-  document.getElementById("detailReceipt").textContent = alert.receipt;
-  document.getElementById("detailTime").textContent = alert.time;
-  document.getElementById("detailProduct").textContent = alert.product;
-  document.getElementById("detailQuantity").textContent = alert.qty;
-  document.getElementById("detailValue").textContent = alert.value;
-  document.getElementById("confidenceValue").textContent = `${alert.confidence}% confiança`;
-  document.getElementById("analysisText").textContent = alert.analysis;
-  document.getElementById("technicalNote").textContent = alert.note;
+
+  // Header
+  document.getElementById("drawerTitle").textContent = alert.product || alert.event;
+  document.getElementById("drawerPdvLabel").textContent = alert.pdv || "—";
+  document.getElementById("drawerCameraLabel").textContent = alert.pdv || "—";
+  document.getElementById("cameraTime").textContent = alert.time || "—";
+
+  // Badge resultado
   const badge = document.getElementById("resultBadge");
-  badge.textContent = alert.result;
+  badge.textContent = alert.result || "Divergência";
   badge.className = `result-badge ${alert.result === "Confere" ? "success" : alert.result === "Inconclusivo" || alert.result === "Revisar" ? "warning" : "danger"}`;
-  // Snapshot do streamer: imagem única, não precisa dividir em painéis
-  if (alert.imageUrl && alert.imageUrl.startsWith('/streamer/')) {
-    const mainEv = document.getElementById("mainEvidence");
-    const frameButtons = document.querySelectorAll(".frame-strip button");
-    mainEv.src = FRAME_FALLBACKS.register;
-    mediaObjectUrl(alert.imageUrl)
-      .then(blobUrl => {
-        mainEv.src = blobUrl;
-        frameButtons.forEach(btn => { btn.dataset.frame = blobUrl; });
-        frameButtons.forEach(b => b.classList.remove("active"));
-        if (frameButtons[1]) frameButtons[1].classList.add("active");
-      })
-      .catch(err => { console.error('Foto falhou:', alert.imageUrl, err); });
-  } else {
-    aplicarEvidencia(alert.imageUrl);
+
+  // Diagnóstico IA
+  const ia = _parsearAnaliseIA(alert.analysis, alert.note);
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || "—"; };
+  set("iaProdutoRegistrado", ia.produto !== "—" ? ia.produto : alert.product);
+  set("iaCategoriaEsperada", ia.categoria);
+  set("iaClipDetectou",      ia.clip);
+  set("iaSmolvlm",           ia.smolvlm);
+  const obsLinha = document.getElementById("iaObsLinha");
+  if (ia.obs && obsLinha) {
+    obsLinha.style.display = "";
+    set("iaObs", ia.obs);
+  } else if (obsLinha) {
+    obsLinha.style.display = "none";
   }
+
+  // Dados do item
+  set("detailProduct",  alert.product);
+  set("detailValue",    alert.value);
+  set("detailQuantity", alert.qty);
+  set("detailReceipt",  alert.receipt);
+  set("detailPdv",      alert.pdv);
+  set("detailTime",     alert.time);
+
+  // Foto
+  const mainEv = document.getElementById("mainEvidence");
+  mainEv.src = "assets/frame-register.svg";
+  if (alert.imageUrl) {
+    const loadImg = url => mediaObjectUrl(url)
+      .then(blobUrl => { mainEv.src = blobUrl; })
+      .catch(() => {});
+    if (alert.imageUrl.startsWith('/streamer/') || alert.imageUrl.startsWith('/api/')) {
+      loadImg(alert.imageUrl);
+    }
+  }
+
   drawer.classList.add("open");
   backdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
