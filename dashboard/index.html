@@ -184,16 +184,15 @@
               <small id="metricIATempoMinMax" style="display:block;font-size:9px;color:var(--muted);margin-top:1px"></small>
             </div>
           </article>
-          <!-- IDs ocultos mantidos para o JS não quebrar -->
-          <span hidden id="metricItensCaixa"></span>
-          <span hidden id="metricItensCaixaDetalhe"></span>
-          <span hidden id="metricAlertasPendentes"></span>
-          <span hidden id="metricAlertasCriticos"></span>
-          <span hidden id="metricIAFila"></span>
-          <span hidden id="metricIAFilaDetalhe"></span>
-          <span hidden id="metricIAAprovados"></span>
-          <span hidden id="metricIADetalhe"></span>
         </section>
+
+        <!-- IDs ocultos para JS (fora do grid para não quebrar layout) -->
+        <div style="display:none" aria-hidden="true">
+          <span id="metricItensCaixa"></span><span id="metricItensCaixaDetalhe"></span>
+          <span id="metricAlertasPendentes"></span><span id="metricAlertasCriticos"></span>
+          <span id="metricIAFila"></span><span id="metricIAFilaDetalhe"></span>
+          <span id="metricIAAprovados"></span><span id="metricIADetalhe"></span>
+        </div>
 
         <!-- Pipeline IA -->
         <div class="pipeline-section">
