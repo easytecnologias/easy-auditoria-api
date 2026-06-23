@@ -607,7 +607,11 @@ tbody tr:hover { background: #fbfcfd; }
 .pdv-card-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--primary); font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
 
 /* ── VAR Search ── */
-.var-search-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 20px; max-width: 480px; }
+.var-search-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.var-search-box form { display: flex; align-items: flex-end; gap: 12px; flex: 1; flex-wrap: wrap; }
+.var-search-box .var-search-label { margin-bottom: 0; flex: 1; min-width: 160px; }
+.var-search-box .var-radio-group { margin-bottom: 0; }
+.var-search-box .var-search-btn { width: auto; flex-shrink: 0; height: 40px; padding: 0 24px; }
 .var-search-label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 14px; }
 .var-search-label input { border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-size: 15px; outline: none; color: var(--text); transition: border-color .15s; }
 .var-search-label input:focus { border-color: var(--primary); }
