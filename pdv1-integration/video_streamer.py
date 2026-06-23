@@ -794,6 +794,7 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "date": date_str,
                     "aprovados": s.get("ok", 0),
                     "suspeitos": s.get("suspeito", 0),
+                    "sem_dvr": s.get("sem_dvr", 0),
                     "total": total,
                     "taxa_aprovacao": round(s.get("ok", 0) / total * 100, 1) if total > 0 else 0,
                     "media_s": round(media_ms / 1000, 1) if media_ms else 0,
@@ -801,6 +802,7 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "max_s": round(max(tempos) / 1000, 1) if tempos else 0,
                     "ultimo_s": round(tempos[-1] / 1000, 1) if tempos else 0,
                     "tempos_recentes": [round(t / 1000, 1) for t in tempos[-10:]],
+                    "fila": s.get("fila", 0),
                 }
             except Exception as e:
                 stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}
