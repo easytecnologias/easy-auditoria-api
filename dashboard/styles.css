@@ -529,8 +529,11 @@ tbody tr:hover { background: #fbfcfd; }
   table { min-width: 700px; }
   /* Cupons */
   .cupons-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .cupons-table { min-width: 480px; table-layout: auto; }
+  .cupons-table { min-width: 0; table-layout: auto; width: 100%; }
   .cupons-table colgroup { display: none; }
+  /* Mobile: esconde Operador (col 3) e Valor item (col 5) */
+  .cupons-table th:nth-child(3), .cupons-table td:nth-child(3),
+  .cupons-table th:nth-child(5), .cupons-table td:nth-child(5) { display: none; }
   .cupons-col-itens { display: none; }
   .cupons-filtros-linha { flex-wrap: wrap; gap: 6px; }
   .cupons-filtros { padding: 12px; }
