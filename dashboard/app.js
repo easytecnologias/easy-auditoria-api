@@ -574,6 +574,14 @@ function openDrawer(alert) {
 }
 
 function closeDrawer() {
+  // Reset foto/vídeo para próxima abertura
+  const vid = document.getElementById("drawerVideo");
+  const img = document.getElementById("mainEvidence");
+  const btn = document.getElementById("videoButton");
+  if (vid) { vid.pause(); vid.src = ""; vid.style.display = "none"; }
+  if (img) img.style.display = "";
+  if (btn) { btn.innerHTML = '<i data-lucide="play"></i>Ver vídeo'; lucide.createIcons(); }
+  document.getElementById("drawerVideoLoading").style.display = "none";
   drawer.classList.remove("open");
   backdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
@@ -778,7 +786,23 @@ document.getElementById("ignoreButton").addEventListener("click", async () => {
 });
 document.getElementById("videoButton").addEventListener("click", () => {
   if (!selectedAlert) return;
-  // Montar URL do vídeo igual ao openVideo mas abrir no varDrawer
+  const img     = document.getElementById("mainEvidence");
+  const vid     = document.getElementById("drawerVideo");
+  const loading = document.getElementById("drawerVideoLoading");
+  const btn     = document.getElementById("videoButton");
+
+  // Toggle: se vídeo visível → volta para foto
+  if (vid.style.display !== "none") {
+    vid.pause(); vid.src = "";
+    vid.style.display = "none";
+    loading.style.display = "none";
+    img.style.display = "";
+    btn.innerHTML = '<i data-lucide="play"></i>Ver vídeo';
+    lucide.createIcons();
+    return;
+  }
+
+  // Montar URL do clip
   let videoSrc = null;
   if (selectedAlert.imageUrl && selectedAlert.imageUrl.startsWith('/streamer/snapshot')) {
     try {
@@ -786,19 +810,41 @@ document.getElementById("videoButton").addEventListener("click", () => {
       const ts    = url.searchParams.get('ts');
       const token = url.searchParams.get('token') || (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
       if (ts) {
-        const dt    = new Date(ts.replace(' ','T'));
-        const fmt   = d => { const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
-        const start = fmt(new Date(dt.getTime() - 15000));
-        const end   = fmt(new Date(dt.getTime() + 15000));
+        const dt  = new Date(ts.replace(' ','T'));
+        const fmt = d => { const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
         const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
-        videoSrc = `${STREAMER}/clip?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${token}`;
+        videoSrc = `${STREAMER}/clip?start=${encodeURIComponent(fmt(new Date(dt.getTime()-15000)))}&end=${encodeURIComponent(fmt(new Date(dt.getTime()+15000)))}&token=${token}`;
       }
     } catch(e) {}
   }
-  if (!videoSrc) videoSrc = selectedAlert.videoUrl;
   if (!videoSrc) { showToast("Sem vídeo para este alerta."); return; }
-  const breadcrumb = `${selectedAlert.pdv || ''} · Cupom ${selectedAlert.receipt || ''}`;
-  _abrirVideoVarDrawer(selectedAlert.product || "Vídeo do evento", breadcrumb, videoSrc);
+
+  // Mostrar loading, esconder foto
+  img.style.display = "none";
+  loading.style.display = "flex";
+  vid.style.display = "none";
+  btn.innerHTML = '<i data-lucide="image"></i>Ver foto';
+  lucide.createIcons();
+
+  const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
+  const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
+
+  fetch(videoSrc)
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      loading.style.display = "none";
+      if (!d?.token) { img.style.display = ""; btn.innerHTML = '<i data-lucide="play"></i>Ver vídeo'; lucide.createIcons(); showToast("Vídeo não disponível."); return; }
+      vid.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
+      vid.style.display = "";
+      vid.load(); vid.play().catch(() => {});
+    })
+    .catch(() => {
+      loading.style.display = "none";
+      img.style.display = "";
+      btn.innerHTML = '<i data-lucide="play"></i>Ver vídeo';
+      lucide.createIcons();
+      showToast("Erro ao carregar vídeo.");
+    });
 });
 document.getElementById("closeVideo").addEventListener("click", () => {
   document.getElementById("videoModal").classList.remove("open");

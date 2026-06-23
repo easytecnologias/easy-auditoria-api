@@ -759,9 +759,15 @@
     </div>
     <div class="drawer-body">
 
-      <!-- 1. Foto do momento do bip -->
+      <!-- 1. Foto / vídeo do momento do bip -->
       <div class="evidence-main">
         <img id="mainEvidence" src="assets/frame-register.svg" alt="Câmera do caixa">
+        <video id="drawerVideo" controls playsinline webkit-playsinline
+               style="display:none;width:100%;height:auto;background:#000"></video>
+        <div id="drawerVideoLoading" style="display:none;position:absolute;inset:0;background:#000;align-items:center;justify-content:center;flex-direction:column;color:#fff;gap:8px">
+          <i data-lucide="loader-circle" style="width:32px;height:32px;animation:spin 1s linear infinite"></i>
+          <span style="font-size:12px">Gerando vídeo…</span>
+        </div>
         <span class="camera-label" id="drawerCameraLabel">PDV 01</span>
         <span class="camera-time" id="cameraTime">—</span>
       </div>
