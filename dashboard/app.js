@@ -1,5 +1,10 @@
-const LOJA = "loja-106";
+let LOJA = (window.APP_CONFIG || {}).LOJA || "loja-106";
 const REFRESH_INTERVAL_MS = 15000;
+
+// Formatador de moeda BRL com separador de milhar (R$ 29.871,00)
+function fmtBRL(v) {
+  return "R$ " + (v || 0).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
 const TOKEN_KEY = "ea_token";
 
 // ── Auth ──────────────────────────────────────────────
@@ -1211,7 +1216,7 @@ async function _carregarCuponsVar() {
       const badge = nalerts > 0
         ? `<span data-badge-cupom="${c.numero}" style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer" title="Ver alertas do cupom ${c.numero}"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
         : `<span style="display:inline-flex;align-items:center;gap:3px;background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✓</span>`;
-      const total = `R$ ${(c.total||0).toFixed(2).replace(".",",")}`;
+      const total = fmtBRL(c.total);
       const topItem = c.item_top ? `<span style="color:var(--primary);margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>';
       return `<tr style="cursor:pointer" data-cupom="${c.numero}">
         <td>${(c.abriu||"").slice(0,5)}</td>
@@ -1389,7 +1394,7 @@ function renderVarBody() {
             const snapUrl = `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(it.timestamp)}&token=${TOKEN_STREAMER_F}`;
             const row = _buildRow(
               it.time, it.desc,
-              `R$ ${it.value.toFixed(2).replace(".",",")}`,
+              fmtBRL(it.value),
               i === 0,
               () => _setFoto(snapUrl, `${it.time} · ${it.desc}`, false)
             );
@@ -1612,7 +1617,7 @@ function renderVarBody() {
               <span class="var-timeline-time">${it.time.slice(0,5)}</span>
               <span class="var-timeline-product">${it.desc}</span>
               <span class="var-timeline-qty">${qtyStr}</span>
-              <span class="var-timeline-price">R$ ${it.value.toFixed(2).replace(".",",")}</span>
+              <span class="var-timeline-price">R$ ${it.value.toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}</span>
             </div>`;
           }).join("");
         }).catch(() => {});
@@ -1906,9 +1911,9 @@ function _aplicarFiltrosCupons(pagina) {
       <td><strong>${c.numero}</strong></td>
       <td class="cupons-op">${c.operador || '—'}</td>
       <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.item_top||''}">${c.item_top ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>'}</td>
-      <td style="text-align:right;font-size:12px;white-space:nowrap">${c.item_top_valor > 0 ? `R$ ${c.item_top_valor.toFixed(2).replace('.',',')}` : '<span style="color:var(--border)">—</span>'}</td>
+      <td style="text-align:right;font-size:12px;white-space:nowrap">${c.item_top_valor > 0 ? `R$ ${c.item_top_valor.toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}` : '<span style="color:var(--border)">—</span>'}</td>
       <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
-      <td style="text-align:right;font-weight:600;white-space:nowrap">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap">${fmtBRL(c.total)}</td>
       <td>
         <div style="display:flex;justify-content:center;gap:4px">
           <button class="icon-button cupom-btn-nota" data-cupom="${c.numero}" title="Ver cupom"><i data-lucide="file-text" style="width:16px;height:16px"></i></button>
@@ -1916,7 +1921,7 @@ function _aplicarFiltrosCupons(pagina) {
         </div>
       </td>
     </tr>`).join("");
-  footer.textContent = `${_cuponsListaFiltrada.length} de ${_cuponsTodos.length} cupons · Total R$ ${totalVal.toFixed(2).replace(".",",")}`;
+  footer.textContent = `${_cuponsListaFiltrada.length} de ${_cuponsTodos.length} cupons · Total R$ ${totalVal.toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}`;
   lucide.createIcons();
   _renderPaginacao("cuponsPaginacaoInfo","cuponsPaginacaoBtns","cuponsPaginacao", pagina, _cuponsListaFiltrada.length, p => _aplicarFiltrosCupons(p));
 
@@ -2027,7 +2032,7 @@ async function abrirCupomDrawer(cupomNum) {
     document.getElementById("receiptDrawerEyebrow").textContent = `${d.data} · ${d.operador || '—'}`;
     document.getElementById("receiptDrawerTitle").textContent = `Cupom ${d.numero}`;
 
-    const fmtVal = v => `R$ ${(v||0).toFixed(2).replace(".",",")}`;
+    const fmtVal = v => `R$ ${(v||0).toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const itensHTML = (d.itens || []).map(it => `
       <tr>
         <td style="padding:6px 8px">${it.time.slice(0,5)}</td>
@@ -2144,7 +2149,7 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
     const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
     return `${y}-${m}-${day}`;
   }
-  function _fmtBRL(v) { return 'R$ ' + (v||0).toFixed(2).replace('.',','); }
+  function _fmtBRL(v) { return 'R$ ' + (v||0).toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2}); }
   function _fmtQty(q, u) {
     const n = parseFloat(q)||0;
     return u === 'Kg' ? n.toFixed(3).replace('.',',') + ' kg' : n.toFixed(0) + 'x';
@@ -2606,7 +2611,7 @@ async function iniciarViewRelatorios() {
   const suspeitos   = statsResp.suspeitos || 0;
   const taxaIA      = statsResp.taxa_aprovacao || 0;
 
-  const fmt = v => `R$ ${v.toFixed(2).replace(".",",")}`;
+  const fmt = v => `R$ ${v.toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
   document.getElementById("rptKpis").innerHTML = [
     { label:"Vendido no dia",   value: fmt(totalVendas),  sub: `${totalCupons} cupons` },
