@@ -611,7 +611,7 @@ tbody tr:hover { background: #fbfcfd; }
 .var-search-box form { display: flex; align-items: flex-end; gap: 12px; flex: 1; flex-wrap: wrap; }
 .var-search-box .var-search-label { margin-bottom: 0; flex: 1; min-width: 160px; }
 .var-search-box .var-radio-group { margin-bottom: 0; }
-.var-search-box .var-search-btn { width: auto; flex-shrink: 0; height: 40px; padding: 0 24px; }
+.var-search-box .var-search-btn { width: auto; flex-shrink: 0; height: 40px; padding: 0 24px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .var-search-label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 14px; }
 .var-search-label input { border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-size: 15px; outline: none; color: var(--text); transition: border-color .15s; }
 .var-search-label input:focus { border-color: var(--primary); }
