@@ -2656,15 +2656,34 @@ async function iniciarViewRelatorios() {
   });
   const horas = Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).filter(h=>porHora[h]>0);
   const maxV = Math.max(...horas.map(h=>porHora[h]||0), 1);
-  const BAR_MAX_PX = 100; // altura máxima da barra em px
-  document.getElementById("rptVendasHora").innerHTML = horas.map(h => {
+  const BAR_MAX_PX = 100;
+  const chartEl = document.getElementById("rptVendasHora");
+  chartEl.innerHTML = horas.map(h => {
     const px = Math.max(Math.round(((porHora[h]||0)/maxV)*BAR_MAX_PX), 3);
     const temAlerta = alertsPorHora[h] > 0;
-    return `<div class="rpt-col-wrap" title="${h}h · ${fmtBRL(porHora[h]||0)}">
+    const val = fmtBRL(porHora[h]||0);
+    return `<div class="rpt-col-wrap" data-val="${val}" data-h="${h}h" title="${h}h · ${val}">
       <div class="rpt-col ${temAlerta?'has-alert':''}" style="height:${px}px"></div>
       <div class="rpt-col-label">${h}</div>
     </div>`;
   }).join("") || "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
+
+  // Tooltip ao clicar (funciona em touch/mobile)
+  let _rptTooltip = null;
+  chartEl.querySelectorAll(".rpt-col-wrap").forEach(col => {
+    col.addEventListener("click", e => {
+      if (_rptTooltip) { _rptTooltip.remove(); _rptTooltip = null; }
+      const tip = document.createElement("div");
+      tip.style.cssText = "position:absolute;background:#172026;color:white;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:10;transform:translateX(-50%)";
+      tip.textContent = `${col.dataset.h} · ${col.dataset.val}`;
+      col.style.position = "relative";
+      col.appendChild(tip);
+      _rptTooltip = tip;
+      setTimeout(() => { if (_rptTooltip === tip) { tip.remove(); _rptTooltip = null; } }, 3000);
+      e.stopPropagation();
+    });
+  });
+  document.addEventListener("click", () => { if (_rptTooltip) { _rptTooltip.remove(); _rptTooltip = null; } }, { once: true });
 
   // ── Alertas por categoria ────────────────────────────────────────
   const porCat = {};
