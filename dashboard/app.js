@@ -595,9 +595,25 @@ function openVideo() {
 
   if (!videoSrc) { video.hidden = true; unavailable.hidden = false; return; }
 
-  // Vídeo do streamer (fMP4 streaming) — direto no src
+  const _isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Vídeo do streamer — /clip gera MP4 completo
   if (videoSrc.includes('/streamer/') && !videoSrc.includes('/api/v1/')) {
-    video.src = videoSrc; video.load(); video.play().catch(() => {});
+    if (_isMobile && videoSrc.includes('/clip?')) {
+      // Mobile: gerar clipe primeiro, depois reproduzir pelo token
+      fetch(videoSrc)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d?.token) { video.hidden = true; unavailable.hidden = false; return; }
+          const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
+          const TOKEN = (window.APP_CONFIG||{}).STREAMER_TOKEN || '';
+          video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
+          video.load(); video.play().catch(() => {});
+        })
+        .catch(() => { video.hidden = true; unavailable.hidden = false; });
+    } else {
+      video.src = videoSrc; video.load(); video.play().catch(() => {});
+    }
   } else {
     // URL protegida da API — usar blob
     mediaObjectUrl(videoSrc)
