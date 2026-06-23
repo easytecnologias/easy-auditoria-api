@@ -227,7 +227,7 @@ h2 { margin-bottom: 4px; font-size: 15px; }
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
