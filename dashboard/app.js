@@ -1807,7 +1807,7 @@ function _aplicarFiltrosCupons(pagina) {
       <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
       <td style="text-align:right;font-weight:600;white-space:nowrap">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
       <td>
-        <div style="display:flex;justify-content:flex-end;gap:4px">
+        <div style="display:flex;justify-content:center;gap:4px">
           <button class="icon-button cupom-btn-nota" data-cupom="${c.numero}" title="Ver cupom"><i data-lucide="file-text" style="width:16px;height:16px"></i></button>
           <button class="icon-button cupom-btn-video" data-cupom="${c.numero}" title="Ver vídeo"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button>
         </div>
