@@ -661,8 +661,7 @@ tbody tr:hover { background: #fbfcfd; }
 .var-foto-row-time { font-size: 11px; font-weight: 700; color: var(--muted); }
 .var-foto-row-prod { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .var-foto-row-val  { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
-.btn-ver-item { border: 1px solid var(--primary); color: var(--primary); background: transparent; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-.btn-ver-item:hover { background: var(--primary); color: #fff; }
+.btn-ver-item { display: flex; align-items: center; justify-content: center; margin: 0 auto; }
 /* ── Timeline ────────────────────────────────────────────────── */
 .var-timeline-time { font-size: 11px; font-weight: 600; color: var(--muted); flex-shrink: 0; }
 .var-timeline-product { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
