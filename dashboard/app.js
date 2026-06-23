@@ -2684,13 +2684,17 @@ async function iniciarViewRelatorios() {
     if (c?.operador) porOp[c.operador].alertas++;
   });
   const topOps = Object.entries(porOp).sort((a,b)=>b[1].total-a[1].total).slice(0,6);
-  document.getElementById("rptOperadores").innerHTML = topOps.length ? topOps.map(([op,d],i) => `
-    <div class="rpt-rank-row">
+  document.getElementById("rptOperadores").innerHTML = topOps.length ? topOps.map(([op,d],i) => {
+    const ticket = d.cupons > 0 ? d.total / d.cupons : 0;
+    return `<div class="rpt-rank-row">
       <div class="rpt-rank-num">${i+1}</div>
-      <div class="rpt-rank-name">${op}</div>
-      <div class="rpt-rank-val">${fmt(d.total)}</div>
-      ${d.alertas>0?`<div class="rpt-rank-badge">⚠${d.alertas}</div>`:''}
-    </div>`).join("") : "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
+      <div style="flex:1;min-width:0">
+        <div class="rpt-rank-name">${op}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${d.cupons} cupons · ticket médio ${fmtBRL(ticket)}</div>
+      </div>
+      <div class="rpt-rank-val">${fmtBRL(d.total)}</div>
+    </div>`;
+  }).join("") : "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
 
   // ── Produtos mais alertados ──────────────────────────────────────
   const porProd = {};
