@@ -242,6 +242,8 @@ function mudarData(novaData) {
   atualizarRotuloData();
   carregarAlertas();
   carregarVendas();
+  carregarItensCaixa();
+  carregarStatsIA();
   // Recarregar cupons do PDV VAR se estiver visível
   if (document.getElementById("pdvVarSearch")?.style.display !== "none") {
     _carregarCuponsVar();
@@ -2505,7 +2507,7 @@ async function carregarItensCaixa() {
   try {
     const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
     const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
-    const today    = formatDateInput(new Date());
+    const today    = selectedDate;
     const r = await fetch(`${STREAMER}/stats?date=${today}&token=${TOKEN}`);
     if (!r.ok) return;
     const d = await r.json();
@@ -2522,7 +2524,7 @@ async function carregarStatsIA() {
   try {
     const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
     const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
-    const today    = formatDateInput(new Date());
+    const today    = selectedDate;
     const r = await fetch(`${STREAMER}/vlm-stats?date=${today}&token=${TOKEN}`);
     if (!r.ok) return;
     const d = await r.json();
