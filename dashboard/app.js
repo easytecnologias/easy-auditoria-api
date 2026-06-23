@@ -2116,76 +2116,80 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
       .catch(() => { loading.style.display = "none"; tabela.style.display = ""; });
   }
 
-  // ── Modal de vídeo da consulta ─────────────────────────────────────────
-  let _cvmCtx = null;
-
-  window.fecharConsultaVideoModal = function() {
-    const modal = document.getElementById("consultaVideoModal");
-    const video = document.getElementById("cvmVideo");
-    modal.style.display = "none";
-    video.pause(); video.src = "";
-  };
-
-  window.cvmTentarNovamente = function() {
-    if (_cvmCtx) _abrirVideoConsulta(_cvmCtx);
-  };
-
+  // ── Vídeo da consulta — abre no varDrawer lateral ─────────────────────
   function _abrirVideoConsulta(c) {
-    _cvmCtx = c;
     const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
     const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
 
-    const modal   = document.getElementById("consultaVideoModal");
-    const loading = document.getElementById("cvmLoading");
-    const video   = document.getElementById("cvmVideo");
-    const erro    = document.getElementById("cvmErro");
+    // Calcular janela ±10s
+    const dt  = new Date((c.timestamp||"").replace(" ","T"));
+    const fmt = d => { const p = n => String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+    const start = fmt(new Date(dt.getTime() - 10000));
+    const end   = fmt(new Date(dt.getTime() + 10000));
+    const clipUrl = `${STREAMER}/clip?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${TOKEN}`;
 
-    document.getElementById("cvmBreadcrumb").textContent = `PDV 01 · ${c.cupom ? "Cupom #"+c.cupom : ""}`;
-    document.getElementById("cvmTitle").textContent = c.desc || c.cod || "Item consultado";
-    document.getElementById("cvmDesc").textContent  = `${(c.time||"").slice(0,8)} · ${_fmtQty(c.qty, c.unit)} · ${_fmtBRL(c.vtotal)}`;
+    // Preencher header do varDrawer
+    document.getElementById("varResultModalBreadcrumb").textContent = `PDV 01 · ${c.cupom ? "Cupom #"+c.cupom : (c.time||"").slice(0,8)}`;
+    document.getElementById("varResultModalTitle").textContent = c.desc || c.cod || "Item consultado";
 
-    modal.style.display = "";
-    loading.style.display = ""; video.style.display = "none"; erro.style.display = "none";
-    video.pause(); video.src = "";
+    // Ocultar tabs do cupom
+    const tabBar = varDrawer.querySelector(".var-tab-bar");
+    if (tabBar) tabBar.style.display = "none";
 
-    lucide.createIcons({ el: modal });
+    // Montar body: vídeo + informações abaixo
+    const body = document.getElementById("varResultModalBody");
+    body.innerHTML = `
+      <div class="var-inline-player">
+        <video id="cvDrawerVideo" controls playsinline webkit-playsinline preload="metadata"
+               style="width:100%;display:none;background:#000;max-height:45vh;object-fit:cover"></video>
+        <div id="cvDrawerLoading" style="text-align:center;padding:32px;color:var(--muted)">
+          <i data-lucide="loader-circle" style="width:32px;height:32px;animation:spin 1s linear infinite"></i>
+          <p style="margin-top:8px;font-size:13px">Gerando vídeo…</p>
+        </div>
+        <div id="cvDrawerErro" hidden style="text-align:center;padding:32px;color:var(--muted)">
+          <i data-lucide="video-off" style="width:32px;height:32px"></i>
+          <p style="margin-top:8px;font-size:13px">Vídeo não disponível para este item.</p>
+        </div>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+        <dl class="event-data">
+          <div><dt>Item</dt><dd>${c.desc || c.cod || "—"}</dd></div>
+          <div><dt>Horário</dt><dd>${(c.time||"").slice(0,8)}</dd></div>
+          <div><dt>Quantidade</dt><dd>${_fmtQty(c.qty, c.unit)}</dd></div>
+          <div><dt>Valor</dt><dd>${_fmtBRL(c.vtotal)}</dd></div>
+          <div><dt>Operador</dt><dd>${c.operador||"—"}</dd></div>
+          <div><dt>Cupom</dt><dd>${c.cupom||"—"}</dd></div>
+        </dl>
+        ${c.consultas && c.consultas.length ? `
+        <div class="ia-diagnostico">
+          <div class="ia-diagnostico-header"><i data-lucide="search"></i><strong>Consultas do item</strong></div>
+          <div class="ia-diagnostico-body">
+            ${c.consultas.map(q => `<div class="ia-linha"><span class="ia-label">${q.type||"Consulta"}</span><span>${q.time||""}</span></div>`).join("")}
+          </div>
+        </div>` : ""}
+      </div>`;
 
-    // Calcular janela: ts ± 10s em horário LOCAL (não UTC)
-    function _calcWindow(ts) {
-      const dt = new Date(ts.replace(" ","T"));
-      const s  = new Date(dt.getTime() - 10000);
-      const e  = new Date(dt.getTime() + 10000);
-      const fmt = d => {
-        const p = n => String(n).padStart(2,"0");
-        return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-      };
-      return { start: fmt(s), end: fmt(e) };
-    }
+    lucide.createIcons();
+    openVarDrawer();
 
-    function _montarVideo(startTs, endTs) {
-      const enc = s => encodeURIComponent(s);
-      const clipUrl = `${STREAMER}/clip?start=${enc(startTs)}&end=${enc(endTs)}&token=${TOKEN}`;
+    const video   = document.getElementById("cvDrawerVideo");
+    const loading = document.getElementById("cvDrawerLoading");
+    const erro    = document.getElementById("cvDrawerErro");
 
-      const timeout = setTimeout(() => {
-        loading.style.display = "none"; erro.style.display = "";
-      }, 90000);
+    const timeout = setTimeout(() => { loading.style.display = "none"; erro.hidden = false; }, 90000);
 
-      fetch(clipUrl)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (!d?.token) throw new Error("no token");
-          clearTimeout(timeout);
-          video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
-          video.style.display = "";
-          loading.style.display = "none";
-          video.addEventListener("error", () => { video.style.display = "none"; erro.style.display = ""; }, { once: true });
-          video.play().catch(() => {});
-        })
-        .catch(() => { clearTimeout(timeout); loading.style.display = "none"; erro.style.display = ""; });
-    }
-
-    const win = _calcWindow(c.timestamp);
-    _montarVideo(win.start, win.end);
+    fetch(clipUrl)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        clearTimeout(timeout);
+        if (!d?.token) { loading.style.display = "none"; erro.hidden = false; return; }
+        video.src = `${STREAMER}/clip/${d.token}?token=${TOKEN}`;
+        video.style.display = "";
+        loading.style.display = "none";
+        video.addEventListener("error", () => { video.style.display = "none"; erro.hidden = false; }, { once: true });
+        video.play().catch(() => {});
+      })
+      .catch(() => { clearTimeout(timeout); loading.style.display = "none"; erro.hidden = false; });
   }
 
   // ── Inicialização ──────────────────────────────────────────────────────
