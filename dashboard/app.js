@@ -1203,7 +1203,7 @@ async function _carregarCuponsVar() {
       const numStr = String(c.numero||"");
       const nalerts = alertasPorCupom[numStr] || 0;
       const badge = nalerts > 0
-        ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
+        ? `<span data-badge-cupom="${c.numero}" style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer" title="Ver alertas do cupom ${c.numero}"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
         : `<span style="display:inline-flex;align-items:center;gap:3px;background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✓</span>`;
       const total = `R$ ${(c.total||0).toFixed(2).replace(".",",")}`;
       const topItem = c.item_top ? `<span style="color:var(--primary);margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>';
@@ -1229,6 +1229,18 @@ async function _carregarCuponsVar() {
     tbody.querySelectorAll("tr[data-cupom]").forEach(row => {
       row.addEventListener("click", e => {
         const btn = e.target.closest("button[data-action]");
+        const badge = e.target.closest("[data-badge-cupom]");
+        if (badge) {
+          // Navegar para Alertas filtrado pelo cupom
+          const cupom = badge.dataset.badgeCupom;
+          const alertsBtn = document.querySelector(".nav-item[data-view='alerts']");
+          if (alertsBtn) alertsBtn.click();
+          setTimeout(() => {
+            const inp = document.getElementById("searchInput2");
+            if (inp) { inp.value = cupom; inp.dispatchEvent(new Event("input")); }
+          }, 100);
+          return;
+        }
         if (btn?.dataset.action === "nota") { abrirCupomDrawer(btn.dataset.cupom); return; }
         if (btn?.dataset.action === "video") { abrirVideoCompra(btn.dataset.cupom); return; }
         abrirCupomDrawer(row.dataset.cupom);
