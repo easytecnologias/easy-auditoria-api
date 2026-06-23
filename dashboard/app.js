@@ -1790,22 +1790,19 @@ function _aplicarFiltrosCupons(pagina) {
   const tbody = document.getElementById("cuponsTableBody");
   const footer = document.getElementById("cuponsFooter");
   if (!_cuponsListaFiltrada.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhum cupom encontrado com esses filtros.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Nenhum cupom encontrado com esses filtros.</td></tr>`;
     footer.textContent = "0 cupons";
     document.getElementById("cuponsPaginacao").style.display = "none";
     return;
   }
   const pagSlice = _cuponsListaFiltrada.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
   const totalVal = _cuponsListaFiltrada.reduce((s, c) => s + (c.total || 0), 0);
-  tbody.innerHTML = pagSlice.map(c => {
-    const topItem = c.item_top
-      ? `<span style="font-size:11px;color:var(--muted);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px" title="${c.item_top}">★ ${c.item_top}</span>`
-      : "";
-    return `
+  tbody.innerHTML = pagSlice.map(c => `
     <tr data-cupom="${c.numero}">
       <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
       <td><strong>${c.numero}</strong></td>
-      <td class="cupons-op">${c.operador || '—'}${topItem}</td>
+      <td class="cupons-op">${c.operador || '—'}</td>
+      <td style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0" title="${c.item_top||''}">${c.item_top ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>'}</td>
       <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
       <td style="text-align:right;font-weight:600">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
       <td>
@@ -1814,8 +1811,7 @@ function _aplicarFiltrosCupons(pagina) {
           <button class="icon-button cupom-btn-video" data-cupom="${c.numero}" title="Ver vídeo"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button>
         </div>
       </td>
-    </tr>`;
-  }).join("");
+    </tr>`).join("");
   footer.textContent = `${_cuponsListaFiltrada.length} de ${_cuponsTodos.length} cupons · Total R$ ${totalVal.toFixed(2).replace(".",",")}`;
   lucide.createIcons();
   _renderPaginacao("cuponsPaginacaoInfo","cuponsPaginacaoBtns","cuponsPaginacao", pagina, _cuponsListaFiltrada.length, p => _aplicarFiltrosCupons(p));
