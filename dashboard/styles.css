@@ -531,10 +531,12 @@ tbody tr:hover { background: #fbfcfd; }
   .cupons-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .cupons-table { min-width: 0; table-layout: auto; width: 100%; }
   .cupons-table colgroup { display: none; }
-  /* Mobile: esconde Operador (col 3) e Valor item (col 5) */
+  /* Mobile: esconde Horário(1), Operador(3), Item destaque(4), Valor item(5) */
+  .cupons-table th:nth-child(1), .cupons-table td:nth-child(1),
   .cupons-table th:nth-child(3), .cupons-table td:nth-child(3),
+  .cupons-table th:nth-child(4), .cupons-table td:nth-child(4),
   .cupons-table th:nth-child(5), .cupons-table td:nth-child(5) { display: none; }
-  .cupons-col-itens { display: none; }
+  .cupons-col-itens { display: table-cell; }
   .cupons-filtros-linha { flex-wrap: wrap; gap: 6px; }
   .cupons-filtros { padding: 12px; }
   .cupons-datas { flex-wrap: wrap; }
