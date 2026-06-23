@@ -2481,10 +2481,10 @@ function renderAlertas2() {
 function _triggerPipeline() {
   const itens = window._pipeItens;
   const s = window._pipeStats || {};
-  atualizarPipeline(itens, s.fila, s.analisados, s.ok, s.alertas, s.media_s, s.ultimo_s, s.sem_dvr);
+  atualizarPipeline(itens, s.fila, s.analisados, s.ok, s.alertas, s.media_s, s.ultimo_s, s.sem_dvr, s.descartado);
 }
 
-function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr) {
+function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr, descartado) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set("pipeItens",      itens     != null ? Number(itens).toLocaleString("pt-BR") : "—");
   set("pipeFila",       fila      != null ? fila      : "—");
@@ -2496,6 +2496,9 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   const pctAlertas    = analisados > 0 ? ((alertas / analisados) * 100).toFixed(1) : 0;
   const semDvr = sem_dvr || 0;
   set("pipeAnalisadosPct", semDvr > 0 ? `${pctAnalisados}% · ${semDvr} sem DVR` : `${pctAnalisados}% do total`);
+  const desc = descartado || 0;
+  set("pipeDescartados", desc);
+  set("pipeDescartadosSub", desc > 0 ? `sem ref. visual${semDvr > 0 ? ` · ${semDvr} sem DVR` : ''}` : 'sem descartes');
   set("pipeOkPct",      `${pctOk}%`);
   set("pipeAlertasPct", `${pctAlertas}%`);
   if (ultimo_s || media_s) {
@@ -2557,7 +2560,7 @@ async function carregarStatsIA() {
         ? `${fila} aguardando · ${analisados} analisados`
         : `fila vazia · ${analisados} analisados`;
     }
-    window._pipeStats = { fila: d.fila || 0, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0 };
+    window._pipeStats = { fila: d.fila || 0, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0 };
     _triggerPipeline();
   } catch(e) {}
 }

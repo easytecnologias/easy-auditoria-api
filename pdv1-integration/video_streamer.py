@@ -795,6 +795,7 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "aprovados": s.get("ok", 0),
                     "suspeitos": s.get("suspeito", 0),
                     "sem_dvr": s.get("sem_dvr", 0),
+                    "descartado": s.get("descartado", 0),
                     "total": total,
                     "taxa_aprovacao": round(s.get("ok", 0) / total * 100, 1) if total > 0 else 0,
                     "media_s": round(media_ms / 1000, 1) if media_ms else 0,
