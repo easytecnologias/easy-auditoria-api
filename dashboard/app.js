@@ -586,7 +586,7 @@ function openVideo() {
         const start = fmt(new Date(dt.getTime() - 15000));
         const end   = fmt(new Date(dt.getTime() + 15000));
         const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || '/streamer';
-        videoSrc = `${STREAMER}/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${token}&skip_dhav=1`;
+        videoSrc = `${STREAMER}/clip?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${token}`;
       }
     } catch(e) {}
   }
