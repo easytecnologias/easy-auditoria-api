@@ -873,7 +873,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts"];
+const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts", "viewReports"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -890,7 +890,8 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
                    (id === "viewPdvCards" && view === "terminals") ||
                    (id === "viewReceipts" && view === "receipts") ||
                    (id === "viewConsultar" && view === "consultar") ||
-                   (id === "viewAlerts" && view === "alerts");
+                   (id === "viewAlerts" && view === "alerts") ||
+                   (id === "viewReports" && view === "reports");
       if (el) el.style.display = show ? "" : "none";
       if (show) isSubView = true;
     });
@@ -901,6 +902,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     else if (view === "receipts") iniciarViewCupons();
     else if (view === "consultar") iniciarViewConsultar();
     else if (view === "alerts") iniciarViewAlertas();
+    else if (view === "reports") iniciarViewRelatorios();
     else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
       showToast("Tela incluída na próxima etapa do protótipo.");
     }
@@ -2565,6 +2567,134 @@ function iniciarApp() {
   setInterval(() => {
     if (isHoje(selectedDate)) carregarVendas();
   }, REFRESH_INTERVAL_MS);
+}
+
+// ── Relatórios ──────────────────────────────────────────────────────────────
+async function iniciarViewRelatorios() {
+  const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
+  const date     = selectedDate;
+
+  // Buscar cupons e alertas em paralelo
+  const [cuponResp, statsResp] = await Promise.all([
+    fetch(`${STREAMER}/cupons?date=${date}&token=${TOKEN}`).then(r => r.ok ? r.json() : {cupons:[]}),
+    fetch(`${STREAMER}/vlm-stats?date=${date}&token=${TOKEN}`).then(r => r.ok ? r.json() : {}),
+  ]);
+
+  const cupons  = cuponResp.cupons || [];
+  const alertsD = alerts || [];  // usa alertas já carregados
+
+  // ── KPIs ──────────────────────────────────────────────────────────
+  const totalVendas = cupons.reduce((s, c) => s + (c.total||0), 0);
+  const totalItens  = cupons.reduce((s, c) => s + (c.itens||0), 0);
+  const totalCupons = cupons.filter(c => c.fechou).length;
+  const ticketMedio = totalCupons > 0 ? totalVendas / totalCupons : 0;
+  const aprovados   = statsResp.aprovados || 0;
+  const suspeitos   = statsResp.suspeitos || 0;
+  const taxaIA      = statsResp.taxa_aprovacao || 0;
+
+  const fmt = v => `R$ ${v.toFixed(2).replace(".",",")}`;
+
+  document.getElementById("rptKpis").innerHTML = [
+    { label:"Vendido no dia",   value: fmt(totalVendas),  sub: `${totalCupons} cupons` },
+    { label:"Itens vendidos",   value: totalItens.toLocaleString("pt-BR"), sub: `${(totalItens/Math.max(totalCupons,1)).toFixed(1)} itens/cupom` },
+    { label:"Ticket médio",     value: fmt(ticketMedio),  sub: "por cupom fechado" },
+    { label:"IA aprovados",     value: aprovados,         sub: `${taxaIA}% de aprovação` },
+    { label:"Alertas IA",       value: suspeitos,         sub: `de ${aprovados+suspeitos} analisados` },
+  ].map(k => `
+    <div class="rpt-kpi">
+      <div class="rpt-kpi-label">${k.label}</div>
+      <div class="rpt-kpi-value">${k.value}</div>
+      <div class="rpt-kpi-sub">${k.sub}</div>
+    </div>`).join("");
+
+  // ── Vendas por hora ──────────────────────────────────────────────
+  const porHora = {};
+  const alertsPorHora = {};
+  cupons.forEach(c => {
+    const h = (c.abriu||"").slice(0,2);
+    if (!h) return;
+    porHora[h] = (porHora[h]||0) + (c.total||0);
+  });
+  alertsD.forEach(a => {
+    const h = (a.time||"").slice(0,2);
+    if (h) alertsPorHora[h] = (alertsPorHora[h]||0) + 1;
+  });
+  const horas = Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).filter(h=>porHora[h]>0);
+  const maxV = Math.max(...horas.map(h=>porHora[h]||0), 1);
+  document.getElementById("rptVendasHora").innerHTML = horas.map(h => {
+    const pct = Math.round(((porHora[h]||0)/maxV)*100);
+    const temAlerta = alertsPorHora[h] > 0;
+    return `<div class="rpt-col-wrap" title="${h}h · ${fmt(porHora[h]||0)}">
+      <div class="rpt-col ${temAlerta?'has-alert':''}" style="height:${Math.max(pct,2)}%"></div>
+      <div class="rpt-col-label">${h}</div>
+    </div>`;
+  }).join("") || "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
+
+  // ── Alertas por categoria ────────────────────────────────────────
+  const porCat = {};
+  alertsD.forEach(a => {
+    const analysis = a.analysis || "";
+    const m = analysis.match(/cat:\s*([^)]+)/i);
+    const cat = m ? m[1].trim() : "Outros";
+    porCat[cat] = (porCat[cat]||0) + 1;
+  });
+  const maxCat = Math.max(...Object.values(porCat), 1);
+  const topCats = Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  document.getElementById("rptAlertasCat").innerHTML = topCats.length ? topCats.map(([cat,n]) => `
+    <div class="rpt-bar-row">
+      <div class="rpt-bar-label">${cat.slice(0,10)}</div>
+      <div class="rpt-bar-track">
+        <div class="rpt-bar-fill danger" style="width:${Math.round(n/maxCat*100)}%"></div>
+      </div>
+      <div class="rpt-bar-val">${n}</div>
+    </div>`).join("") : "<p style='color:var(--muted);font-size:12px'>Sem alertas</p>";
+
+  // ── Top operadores ───────────────────────────────────────────────
+  const porOp = {};
+  cupons.forEach(c => {
+    const op = c.operador || "—";
+    if (!porOp[op]) porOp[op] = {total:0, cupons:0, alertas:0};
+    porOp[op].total  += c.total||0;
+    porOp[op].cupons += 1;
+  });
+  alertsD.forEach(a => {
+    // Tentar mapear PDV/cupom para operador
+    const cupom = String(a.receipt||"").replace(/\D/g,"");
+    const c = cupons.find(x=>x.numero===cupom);
+    if (c?.operador) porOp[c.operador] = porOp[c.operador]||{total:0,cupons:0,alertas:0};
+    if (c?.operador) porOp[c.operador].alertas++;
+  });
+  const topOps = Object.entries(porOp).sort((a,b)=>b[1].total-a[1].total).slice(0,6);
+  document.getElementById("rptOperadores").innerHTML = topOps.length ? topOps.map(([op,d],i) => `
+    <div class="rpt-rank-row">
+      <div class="rpt-rank-num">${i+1}</div>
+      <div class="rpt-rank-name">${op}</div>
+      <div class="rpt-rank-val">${fmt(d.total)}</div>
+      ${d.alertas>0?`<div class="rpt-rank-badge">⚠${d.alertas}</div>`:''}
+    </div>`).join("") : "<p style='color:var(--muted);font-size:12px'>Sem dados</p>";
+
+  // ── Produtos mais alertados ──────────────────────────────────────
+  const porProd = {};
+  alertsD.forEach(a => { const p = a.product||"?"; porProd[p]=(porProd[p]||0)+1; });
+  const topProds = Object.entries(porProd).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const maxProd = Math.max(...topProds.map(x=>x[1]),1);
+  document.getElementById("rptProdutos").innerHTML = topProds.length ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      ${topProds.map(([p,n],i)=>`
+      <div class="rpt-bar-row" style="margin:0">
+        <div class="rpt-bar-label" style="width:20px">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px" title="${p}">${p}</div>
+          <div class="rpt-bar-track" style="height:8px">
+            <div class="rpt-bar-fill amber" style="height:8px;width:${Math.round(n/maxProd*100)}%"></div>
+          </div>
+        </div>
+        <div class="rpt-bar-val" style="min-width:24px">${n}</div>
+      </div>`).join("")}
+    </div>` : "<p style='color:var(--muted);font-size:12px'>Sem dados de alerta</p>";
+
+  lucide.createIcons();
 }
 
 verificarAuth();

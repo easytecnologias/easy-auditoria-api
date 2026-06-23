@@ -683,6 +683,58 @@
         </div>
       </section>
 
+      <!-- View: Relatórios -->
+      <section class="workspace" id="viewReports" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Análise</p>
+            <h1>Relatórios</h1>
+            <p>Visão consolidada das operações e auditoria IA.</p>
+          </div>
+        </div>
+
+        <!-- KPIs do dia -->
+        <div class="rpt-kpis" id="rptKpis"></div>
+
+        <div class="rpt-grid">
+          <!-- Vendas por hora -->
+          <div class="rpt-card rpt-card--wide">
+            <div class="rpt-card-header">
+              <i data-lucide="bar-chart-2"></i>
+              <h3>Vendas por hora</h3>
+            </div>
+            <div class="rpt-chart-bars" id="rptVendasHora"></div>
+          </div>
+
+          <!-- IA por categoria -->
+          <div class="rpt-card">
+            <div class="rpt-card-header">
+              <i data-lucide="cpu"></i>
+              <h3>Alertas por categoria</h3>
+            </div>
+            <div id="rptAlertasCat"></div>
+          </div>
+
+          <!-- Top operadores -->
+          <div class="rpt-card">
+            <div class="rpt-card-header">
+              <i data-lucide="users"></i>
+              <h3>Operadores</h3>
+            </div>
+            <div id="rptOperadores"></div>
+          </div>
+
+          <!-- Produtos mais alertados -->
+          <div class="rpt-card rpt-card--wide">
+            <div class="rpt-card-header">
+              <i data-lucide="triangle-alert"></i>
+              <h3>Produtos mais alertados</h3>
+            </div>
+            <div id="rptProdutos"></div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
