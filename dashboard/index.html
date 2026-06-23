@@ -176,35 +176,6 @@
             <div><span>Cupons fechados</span><strong id="metricCuponsFechados">0</strong></div>
           </article>
           <article>
-            <div class="metric-icon cyan"><i data-lucide="scan-barcode"></i></div>
-            <div>
-              <span>Itens no caixa</span>
-              <strong id="metricItensCaixa">—</strong>
-              <small id="metricItensCaixaDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px"></small>
-            </div>
-          </article>
-          <!-- IA / Auditoria -->
-          <article>
-            <div class="metric-icon red"><i data-lucide="triangle-alert"></i></div>
-            <div><span>Alertas pendentes</span><strong id="metricAlertasPendentes">0 <small id="metricAlertasCriticos">0 críticos</small></strong></div>
-          </article>
-          <article>
-            <div class="metric-icon amber"><i data-lucide="hourglass"></i></div>
-            <div>
-              <span>Fila IA</span>
-              <strong id="metricIAFila">—</strong>
-              <small id="metricIAFilaDetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">aguardando…</small>
-            </div>
-          </article>
-          <article>
-            <div class="metric-icon amber"><i data-lucide="check-circle"></i></div>
-            <div>
-              <span>IA Aprovados</span>
-              <strong id="metricIAAprovados">—</strong>
-              <small id="metricIADetalhe" style="display:block;font-size:9px;color:var(--muted);margin-top:2px">carregando…</small>
-            </div>
-          </article>
-          <article>
             <div class="metric-icon blue"><i data-lucide="timer"></i></div>
             <div>
               <span>Tempo por análise</span>
@@ -213,6 +184,15 @@
               <small id="metricIATempoMinMax" style="display:block;font-size:9px;color:var(--muted);margin-top:1px"></small>
             </div>
           </article>
+          <!-- IDs ocultos mantidos para o JS não quebrar -->
+          <span hidden id="metricItensCaixa"></span>
+          <span hidden id="metricItensCaixaDetalhe"></span>
+          <span hidden id="metricAlertasPendentes"></span>
+          <span hidden id="metricAlertasCriticos"></span>
+          <span hidden id="metricIAFila"></span>
+          <span hidden id="metricIAFilaDetalhe"></span>
+          <span hidden id="metricIAAprovados"></span>
+          <span hidden id="metricIADetalhe"></span>
         </section>
 
         <!-- Pipeline IA -->
