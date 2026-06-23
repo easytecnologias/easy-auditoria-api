@@ -2172,7 +2172,7 @@ async function carregarItensCaixa() {
   try {
     const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
     const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
-    const today    = new Date().toISOString().slice(0, 10);
+    const today    = formatDateInput(new Date());
     const r = await fetch(`${STREAMER}/stats?date=${today}&token=${TOKEN}`);
     if (!r.ok) return;
     const d = await r.json();
@@ -2187,7 +2187,7 @@ async function carregarStatsIA() {
   try {
     const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
     const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
-    const today    = new Date().toISOString().slice(0,10);
+    const today    = formatDateInput(new Date());
     const r = await fetch(`${STREAMER}/vlm-stats?date=${today}&token=${TOKEN}`);
     if (!r.ok) return;
     const d = await r.json();
