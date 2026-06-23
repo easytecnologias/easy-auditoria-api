@@ -478,7 +478,7 @@ tbody tr:hover { background: #fbfcfd; }
 .drawer-actions svg { width: 16px; }
 .primary-action { border: 1px solid var(--primary); color: white; background: var(--primary); }
 .secondary-action { border: 1px solid var(--border); color: var(--text); background: white; }
-.ghost-action { grid-column: 1 / -1; border: 0; color: var(--muted); background: transparent; }
+.ghost-action { grid-column: auto; border: 1px solid var(--border); color: var(--muted); background: transparent; border-radius: 6px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(8,18,23,.76); }
 .modal-backdrop.open { display: flex; }
