@@ -237,6 +237,10 @@ function mudarData(novaData) {
   atualizarRotuloData();
   carregarAlertas();
   carregarVendas();
+  // Recarregar cupons do PDV VAR se estiver visível
+  if (document.getElementById("pdvVarSearch")?.style.display !== "none") {
+    _carregarCuponsVar();
+  }
 }
 
 function pdvSelecionado(pdv) {
@@ -1158,13 +1162,10 @@ function abrirVarSearch(pdv) {
   _carregarCuponsVar();
 }
 
-let _varCuponsDate = formatDateInput(new Date());
-
-async function _carregarCuponsVar(dateStr) {
-  if (dateStr) _varCuponsDate = dateStr;
+async function _carregarCuponsVar() {
   const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
   const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
-  const today    = _varCuponsDate;
+  const today    = selectedDate; // usa o seletor global do topo
   const tbody    = document.getElementById("varCuponsBody");
   const resumo   = document.getElementById("varCuponsResumo");
   if (!tbody) return;
@@ -1236,24 +1237,6 @@ document.getElementById("btnVoltarCards").addEventListener("click", () => {
   document.getElementById("pdvVarSearch").style.display = "none";
 });
 
-// Seletores de data na lista de cupons do VAR
-document.querySelectorAll(".varCupons-quick").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".varCupons-quick").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    const d = new Date();
-    d.setDate(d.getDate() - parseInt(btn.dataset.days));
-    const ds = formatDateInput(d);
-    const inp = document.getElementById("varCuponsDataInput");
-    if (inp) inp.value = ds;
-    _carregarCuponsVar(ds);
-  });
-});
-document.getElementById("varCuponsDataInput")?.addEventListener("change", e => {
-  if (!e.target.value) return;
-  document.querySelectorAll(".varCupons-quick").forEach(b => b.classList.remove("active"));
-  _carregarCuponsVar(e.target.value);
-});
 
 document.querySelector('input[name="varTipo"]').addEventListener && document.querySelectorAll('input[name="varTipo"]').forEach(r => {
   r.addEventListener("change", () => {
