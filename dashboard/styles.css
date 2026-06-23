@@ -472,6 +472,10 @@ tbody tr:hover { background: #fbfcfd; }
 .ia-linha { display: flex; gap: 8px; font-size: 12px; align-items: baseline; }
 .ia-label { color: var(--muted); white-space: nowrap; min-width: 120px; flex-shrink: 0; }
 .ia-obs { padding-top: 6px; border-top: 1px solid var(--border); margin-top: 2px; }
+.drawer-obs { padding: 10px 16px 0; flex-shrink: 0; }
+.drawer-obs label { font-size: 11px; font-weight: 600; color: var(--text); display: block; margin-bottom: 4px; }
+.drawer-obs textarea { width: 100%; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; resize: none; font-family: inherit; color: var(--text); box-sizing: border-box; }
+.drawer-obs textarea:focus { outline: none; border-color: var(--primary); }
 .drawer-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); background: white; flex-shrink: 0; }
 .drawer-actions button { display: flex; height: 36px; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; font-size: 10px; font-weight: 700; }
 .drawer-actions svg { width: 16px; }

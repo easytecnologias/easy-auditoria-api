@@ -1065,6 +1065,7 @@ def obter_video_cupom(
 
 class DecisionIn(BaseModel):
     action: str = Field(pattern=r"^(save|ignore)$")
+    observacao: Optional[str] = Field(default=None, max_length=500)
 
 
 @app.post("/api/v1/alerts/{alerta_id}/decision")
@@ -1076,9 +1077,15 @@ def decidir_alerta(
 ):
     _evento_autorizado(alerta_id, usuario, db)
     novo_status = "resolved" if decisao.action == "save" else "ignored"
+    # Adicionar coluna observacao se nao existir
+    try:
+        db.execute("ALTER TABLE auditoria_eventos ADD COLUMN observacao TEXT")
+        db.commit()
+    except Exception:
+        pass
     cursor = db.execute(
-        "UPDATE auditoria_eventos SET status = ? WHERE id = ?",
-        (novo_status, alerta_id),
+        "UPDATE auditoria_eventos SET status = ?, observacao = ? WHERE id = ?",
+        (novo_status, decisao.observacao or "", alerta_id),
     )
     db.commit()
     if cursor.rowcount == 0:

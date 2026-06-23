@@ -670,14 +670,16 @@ function resetVideo() {
 }
 
 async function enviarDecisao(alertaId, action) {
+  const obs = document.getElementById("drawerObsText")?.value?.trim() || "";
   try {
     await apiFetch(`/api/v1/alerts/${alertaId}/decision`, {
       method: "POST",
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, observacao: obs }),
     });
   } catch (err) {
     // erro de rede nao deve travar a UI
   }
+  if (document.getElementById("drawerObsText")) document.getElementById("drawerObsText").value = "";
   await carregarAlertas();
 }
 
