@@ -840,13 +840,13 @@ tbody tr:hover { background: #fbfcfd; }
 .rpt-card-header svg { width: 16px; height: 16px; color: var(--primary); }
 .rpt-card-header h3 { font-size: 14px; font-weight: 700; margin: 0; }
 /* Gráfico de barras horizontal */
-.rpt-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; }
-.rpt-bar-label { width: 40px; text-align: right; color: var(--muted); flex-shrink: 0; }
-.rpt-bar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 20px; overflow: hidden; }
-.rpt-bar-fill { height: 100%; border-radius: 4px; background: var(--primary); transition: width .4s; display: flex; align-items: center; padding-left: 6px; }
-.rpt-bar-fill.danger { background: #c92a2a; }
-.rpt-bar-fill.amber { background: #e67700; }
-.rpt-bar-val { min-width: 60px; text-align: right; font-weight: 600; color: var(--text); flex-shrink: 0; }
+.rpt-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 11px; }
+.rpt-bar-label { width: 100px; text-align: right; color: var(--muted); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.rpt-bar-track { flex: 1; background: var(--bg); border-radius: 6px; height: 14px; overflow: hidden; }
+.rpt-bar-fill { height: 100%; border-radius: 6px; background: var(--primary); transition: width .4s; }
+.rpt-bar-fill.danger { background: #e03131; }
+.rpt-bar-fill.amber { background: #f08c00; }
+.rpt-bar-val { min-width: 28px; text-align: right; font-weight: 700; color: var(--text); flex-shrink: 0; font-size: 12px; }
 /* Gráfico colunas (vendas por hora) */
 .rpt-chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px; }
 .rpt-col-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }

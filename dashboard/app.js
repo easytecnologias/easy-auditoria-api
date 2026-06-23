@@ -2658,10 +2658,19 @@ async function iniciarViewRelatorios() {
     porCat[cat] = (porCat[cat]||0) + 1;
   });
   const maxCat = Math.max(...Object.values(porCat), 1);
+  const CAT_LABEL = {
+    OUTROS:"Outros", PAO:"Pão", LEGUME_VERDURA:"Legume/Verdura",
+    FRUTA:"Fruta", LATICINIOS:"Laticínios", CARNE_SUINA:"Carne Suína",
+    CARNE_BOVINA:"Carne Bovina", BISCOITO:"Biscoito", REFRIGERANTE:"Refrigerante",
+    FRIOS:"Frios", FRANGO:"Frango", HIGIENE:"Higiene", LIMPEZA:"Limpeza",
+    SALGADINHO:"Salgadinho", DOCE_CHOCOLATE:"Doce/Choc", SUCO_AGUA:"Suco/Água",
+    CERVEJA:"Cerveja", OVOS:"Ovos", CONGELADO:"Congelado",
+    CEREAIS_GRAOS:"Cereais/Grãos", MERCEARIA:"Mercearia", PEIXE:"Peixe",
+  };
   const topCats = Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
   document.getElementById("rptAlertasCat").innerHTML = topCats.length ? topCats.map(([cat,n]) => `
     <div class="rpt-bar-row">
-      <div class="rpt-bar-label">${cat.slice(0,10)}</div>
+      <div class="rpt-bar-label" title="${cat}">${CAT_LABEL[cat]||cat}</div>
       <div class="rpt-bar-track">
         <div class="rpt-bar-fill danger" style="width:${Math.round(n/maxCat*100)}%"></div>
       </div>
