@@ -390,11 +390,20 @@ def _listar_cupons(dt):
                 'fechou': None,
                 'total': 0.0,
                 'itens': 0,
+                'item_top': None,   # item de maior valor
+                'item_top_valor': 0.0,
             }
             if current['numero']:
                 by_num[current['numero']] = current
         elif event == 'VIT' and current:
             current['itens'] += 1
+            try:
+                vl = float(fields.get('VlTotal', '0').replace(',', '.'))
+                if vl > current['item_top_valor']:
+                    current['item_top_valor'] = vl
+                    current['item_top'] = fields.get('Descricao', '')
+            except Exception:
+                pass
         elif event == 'FECHACUPOM':
             num = fields.get('Cod', '')
             cup = by_num.get(num, current)
