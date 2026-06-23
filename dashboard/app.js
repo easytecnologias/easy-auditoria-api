@@ -1790,7 +1790,7 @@ function _aplicarFiltrosCupons(pagina) {
   const tbody = document.getElementById("cuponsTableBody");
   const footer = document.getElementById("cuponsFooter");
   if (!_cuponsListaFiltrada.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Nenhum cupom encontrado com esses filtros.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">Nenhum cupom encontrado com esses filtros.</td></tr>`;
     footer.textContent = "0 cupons";
     document.getElementById("cuponsPaginacao").style.display = "none";
     return;
@@ -1802,9 +1802,8 @@ function _aplicarFiltrosCupons(pagina) {
       <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
       <td><strong>${c.numero}</strong></td>
       <td class="cupons-op">${c.operador || '—'}</td>
-      <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.item_top||''}">${c.item_top
-        ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span><span style="color:var(--text)">${c.item_top}</span>${c.item_top_valor > 0 ? `<span style="color:var(--muted);margin-left:8px">· R$ ${c.item_top_valor.toFixed(2).replace('.',',')}</span>` : ''}`
-        : '<span style="color:var(--border)">—</span>'}</td>
+      <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.item_top||''}">${c.item_top ? `<span style="color:var(--primary);font-weight:600;margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>'}</td>
+      <td style="text-align:right;font-size:12px;white-space:nowrap">${c.item_top_valor > 0 ? `R$ ${c.item_top_valor.toFixed(2).replace('.',',')}` : '<span style="color:var(--border)">—</span>'}</td>
       <td class="cupons-col-itens" style="text-align:center">${c.itens}</td>
       <td style="text-align:right;font-weight:600;white-space:nowrap">R$ ${(c.total || 0).toFixed(2).replace(".", ",")}</td>
       <td>
