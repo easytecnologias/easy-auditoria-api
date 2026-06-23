@@ -1151,6 +1151,8 @@ async function carregarCardsPdv() {
   lucide.createIcons();
 }
 
+let _varCuponsTimer = null;
+
 function abrirVarSearch(pdv) {
   varPdvSelecionado = pdv;
   document.getElementById("pdvCardsGrid").style.display = "none";
@@ -1160,6 +1162,13 @@ function abrirVarSearch(pdv) {
   document.getElementById("varItemInput").value = "";
   lucide.createIcons();
   _carregarCuponsVar();
+  // Auto-refresh a cada 15s enquanto a página estiver aberta
+  if (_varCuponsTimer) clearInterval(_varCuponsTimer);
+  _varCuponsTimer = setInterval(() => {
+    if (document.getElementById("pdvVarSearch")?.style.display !== "none") {
+      _carregarCuponsVar();
+    }
+  }, 15000);
 }
 
 async function _carregarCuponsVar() {
@@ -1190,7 +1199,7 @@ async function _carregarCuponsVar() {
 
     if (resumo) resumo.textContent = `${cupons.length} cupons · ${cupons.filter(c=>c.fechou).length} fechados`;
 
-    tbody.innerHTML = cupons.slice(0,30).map(c => {
+    tbody.innerHTML = cupons.slice(0,10).map(c => {
       const numStr = String(c.numero||"");
       const nalerts = alertasPorCupom[numStr] || 0;
       const badge = nalerts > 0
@@ -1232,6 +1241,7 @@ async function _carregarCuponsVar() {
 }
 
 document.getElementById("btnVoltarCards").addEventListener("click", () => {
+  if (_varCuponsTimer) { clearInterval(_varCuponsTimer); _varCuponsTimer = null; }
   closeVarDrawer();
   document.getElementById("pdvCardsGrid").style.display = "";
   document.getElementById("pdvVarSearch").style.display = "none";
