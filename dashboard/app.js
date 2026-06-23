@@ -1155,6 +1155,76 @@ function abrirVarSearch(pdv) {
   document.getElementById("varCupomInput").value = "";
   document.getElementById("varItemInput").value = "";
   lucide.createIcons();
+  _carregarCuponsVar();
+}
+
+async function _carregarCuponsVar() {
+  const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
+  const today    = formatDateInput(new Date());
+  const tbody    = document.getElementById("varCuponsBody");
+  const resumo   = document.getElementById("varCuponsResumo");
+  if (!tbody) return;
+
+  try {
+    const r = await fetch(`${STREAMER}/cupons?date=${today}&token=${TOKEN}`);
+    if (!r.ok) throw new Error("streamer offline");
+    const d = await r.json();
+    const cupons = (d.cupons || []).slice().reverse(); // mais recente primeiro
+
+    // Mapear alertas por cupom
+    const alertasPorCupom = {};
+    (alerts || []).forEach(a => {
+      const num = String(a.receipt || "").replace(/\D/g,"");
+      alertasPorCupom[num] = (alertasPorCupom[num] || 0) + 1;
+    });
+
+    if (!cupons.length) {
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Nenhum cupom hoje.</td></tr>`;
+      return;
+    }
+
+    if (resumo) resumo.textContent = `${cupons.length} cupons · ${cupons.filter(c=>c.fechou).length} fechados`;
+
+    tbody.innerHTML = cupons.slice(0,30).map(c => {
+      const numStr = String(c.numero||"");
+      const nalerts = alertasPorCupom[numStr] || 0;
+      const badge = nalerts > 0
+        ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
+        : `<span style="display:inline-flex;align-items:center;gap:3px;background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✓</span>`;
+      const total = `R$ ${(c.total||0).toFixed(2).replace(".",",")}`;
+      const topItem = c.item_top ? `<span style="color:var(--primary);margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>';
+      return `<tr style="cursor:pointer" data-cupom="${c.numero}">
+        <td>${(c.abriu||"").slice(0,5)}</td>
+        <td><strong>${c.numero}</strong></td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.operador||"—"}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${topItem}</td>
+        <td style="text-align:center">${c.itens||0}</td>
+        <td style="text-align:right;font-weight:600;white-space:nowrap">${total}</td>
+        <td style="text-align:center">${badge}</td>
+        <td style="text-align:center">
+          <div style="display:flex;justify-content:center;gap:4px">
+            <button class="icon-button" data-action="nota" data-cupom="${c.numero}" title="Ver cupom" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="file-text" style="width:14px;height:14px"></i></button>
+            <button class="icon-button" data-action="video" data-cupom="${c.numero}" title="Ver vídeo" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="play-circle" style="width:14px;height:14px;color:var(--primary)"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+
+    lucide.createIcons();
+
+    tbody.querySelectorAll("tr[data-cupom]").forEach(row => {
+      row.addEventListener("click", e => {
+        const btn = e.target.closest("button[data-action]");
+        if (btn?.dataset.action === "nota") { abrirCupomDrawer(btn.dataset.cupom); return; }
+        if (btn?.dataset.action === "video") { abrirVideoCompra(btn.dataset.cupom); return; }
+        abrirCupomDrawer(row.dataset.cupom);
+      });
+    });
+
+  } catch(e) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Streamer offline — não foi possível carregar cupons.</td></tr>`;
+  }
 }
 
 document.getElementById("btnVoltarCards").addEventListener("click", () => {
@@ -1901,6 +1971,11 @@ function closeReceiptDrawer() {
 }
 document.getElementById("closeReceiptDrawer")?.addEventListener("click", closeReceiptDrawer);
 document.getElementById("receiptDrawerBackdrop")?.addEventListener("click", closeReceiptDrawer);
+
+async function abrirVideoCompra(cupomNum) {
+  await abrirCupomDrawer(cupomNum);
+  setTimeout(() => document.getElementById("btnVerVideoFromReceipt")?.click(), 300);
+}
 
 async function abrirCupomDrawer(cupomNum) {
   document.getElementById("receiptDrawerTitle").textContent = `Cupom ${cupomNum}`;

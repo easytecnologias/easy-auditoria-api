@@ -425,22 +425,54 @@
             <button class="icon-button" id="btnVoltarCards" title="Voltar" style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card)"><i data-lucide="arrow-left" style="width:16px;height:16px"></i></button>
           </div>
 
+          <!-- Formulário compacto -->
           <div class="var-search-box">
             <form id="formVarCupom">
-              <label class="var-search-label">Número do cupom
-                <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
-              </label>
-              <div class="var-radio-group">
-                <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
-                <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
+              <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                <label class="var-search-label" style="flex:1;min-width:160px">Número do cupom
+                  <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
+                </label>
+                <div class="var-radio-group" style="margin-bottom:6px">
+                  <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
+                  <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
+                </div>
+                <button type="submit" class="primary-action" style="height:40px;padding:0 20px;white-space:nowrap;margin-bottom:6px"><i data-lucide="search"></i> Buscar</button>
               </div>
-              <div id="varItemField" style="display:none">
+              <div id="varItemField" style="display:none;margin-top:8px">
                 <label class="var-search-label">Nome ou código do produto
                   <input id="varItemInput" type="text" placeholder="Ex: Café Maratá">
                 </label>
               </div>
-              <button type="submit" class="primary-action var-search-btn"><i data-lucide="search"></i> Buscar</button>
             </form>
+          </div>
+
+          <!-- Cupons recentes do dia -->
+          <div style="margin-top:24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h3 style="font-size:14px;font-weight:700;color:var(--text);margin:0">Cupons do dia</h3>
+              <span id="varCuponsResumo" style="font-size:12px;color:var(--muted)"></span>
+            </div>
+            <div class="alerts-panel" style="margin:0">
+              <div class="table-wrap">
+                <table style="table-layout:auto;width:100%">
+                  <thead>
+                    <tr>
+                      <th style="width:1%;white-space:nowrap">Horário</th>
+                      <th style="width:1%;white-space:nowrap">Cupom</th>
+                      <th style="width:1%;white-space:nowrap">Operador</th>
+                      <th>Item destaque</th>
+                      <th style="width:1%;white-space:nowrap;text-align:center">Itens</th>
+                      <th style="width:1%;white-space:nowrap;text-align:right">Total</th>
+                      <th style="width:1%;white-space:nowrap;text-align:center">IA</th>
+                      <th style="width:1%;white-space:nowrap;text-align:center">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="varCuponsBody">
+                    <tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Carregando cupons…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
         </div>
