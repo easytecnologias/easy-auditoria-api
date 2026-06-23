@@ -431,18 +431,16 @@
               <label class="var-search-label">Número do cupom
                 <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
               </label>
-              <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap">
-                <div class="var-radio-group" style="margin:0">
-                  <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
-                  <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
-                </div>
-                <button type="submit" class="primary-action var-search-btn" style="margin:0"><i data-lucide="search"></i> Buscar</button>
+              <div class="var-radio-group">
+                <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
+                <label class="var-radio"><input type="radio" name="varTipo" value="item"><span>Item específico</span></label>
               </div>
-              <div id="varItemField" style="display:none;margin-top:10px">
+              <div id="varItemField" style="display:none">
                 <label class="var-search-label">Nome ou código do produto
                   <input id="varItemInput" type="text" placeholder="Ex: Café Maratá">
                 </label>
               </div>
+              <button type="submit" class="primary-action var-search-btn"><i data-lucide="search"></i> Buscar</button>
             </form>
           </div>
 
