@@ -386,6 +386,34 @@ h2 { margin-bottom: 4px; font-size: 15px; }
 .audit-table {
   min-width: 920px;
 }
+#viewAuditIa {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 68px);
+  overflow: hidden;
+}
+#viewAuditIa .page-heading,
+#viewAuditIa .cupons-filtros {
+  flex: 0 0 auto;
+}
+#viewAuditIa .alerts-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+#viewAuditIa .cupons-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+#viewAuditIa .audit-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8f9fa;
+}
 
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; }
 .content-grid > *, .analytics-grid > * { min-width: 0; }
@@ -598,6 +626,7 @@ tbody tr:hover { background: #fbfcfd; }
   .period-button span { display: none; }
   .pdv-filter-menu { right: auto; left: 0; }
   .workspace { padding: 20px 16px 32px; }
+  #viewAuditIa { height: calc(100vh - 56px); }
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .metrics article:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .content-grid, .analytics-grid { grid-template-columns: 1fr; }
