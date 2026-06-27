@@ -2484,7 +2484,7 @@ function _triggerPipeline() {
   atualizarPipeline(itens, s.fila, s.analisados, s.ok, s.alertas, s.media_s, s.ultimo_s, s.sem_dvr, s.descartado, s.historico_total, s.historico_ok, s.historico_suspeito);
 }
 
-function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr, descartado, historico_total, historico_ok, historico_suspeito) {
+function atualizarPipelineLegacy(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr, descartado, historico_total, historico_ok, historico_suspeito) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set("pipeItens",      itens     != null ? Number(itens).toLocaleString("pt-BR") : "—");
   set("pipeFila",       fila      != null ? fila      : "—");
@@ -2510,6 +2510,58 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   if (ultimo_s || media_s) {
     set("pipeTempo", `⏱ ${ultimo_s || media_s}s/item`);
   }
+  lucide.createIcons();
+}
+
+function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr, descartado, historico_total, historico_ok, historico_suspeito) {
+  const s = window._pipeStats || {};
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const nItens = Number(itens || 0);
+  const nFila = Number(fila || 0);
+  const nOk = Number(ok || 0);
+  const nAlertas = Number(alertas || 0);
+  const nInconclusivos = Number(s.inconclusivos || 0);
+  const nPulados = Number(s.pulados || 0);
+  const semImagem = Number(sem_dvr || 0) + Number(descartado || 0);
+  const nProcessados = Number(s.processados ?? (nOk + nAlertas + nInconclusivos + nPulados + semImagem));
+  const medicao = s.medicao || {};
+  const nEntrada = Number(medicao.itens_novos ?? nItens);
+  const nPendentes = Math.max(0, Number(medicao.pendencia_pela_conta ?? (nEntrada - nProcessados)));
+  const nIaTotal = Number(analisados || 0);
+  const pctAnalisados = nEntrada > 0 ? ((nProcessados / nEntrada) * 100).toFixed(1) : "0.0";
+  const pctOk = nIaTotal > 0 ? ((nOk / nIaTotal) * 100).toFixed(1) : "0.0";
+  const pctAlertas = nIaTotal > 0 ? ((nAlertas / nIaTotal) * 100).toFixed(1) : "0.0";
+  const pctInc = nIaTotal > 0 ? ((nInconclusivos / nIaTotal) * 100).toFixed(1) : "0.0";
+
+  set("pipeItens", itens != null ? nItens.toLocaleString("pt-BR") : "-");
+  set("pipeFila", itens != null ? nPendentes : "-");
+  set("pipeFilaSub", s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta");
+  set("pipeAnalisados", itens != null ? nProcessados : "-");
+  set("pipeAnalisadosPct", `${pctAnalisados}% processados`);
+  set("pipeTempo", (ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-");
+  set("pipeDescartados", semImagem + nPulados);
+  set("pipeDescartadosSub", `${nPulados} sem IA · ${sem_dvr || 0} sem DVR`);
+
+  const inconclusiveCard = document.getElementById("pipeHistoricoTotal")?.closest(".pipeline-step");
+  if (inconclusiveCard) {
+    inconclusiveCard.style.background = "#fff9db";
+    inconclusiveCard.querySelector(".pipeline-label").textContent = "Inconclusivos";
+    inconclusiveCard.querySelector(".pipeline-sub").id = "pipeInconclusivosPct";
+    const icon = inconclusiveCard.querySelector(".pipeline-icon");
+    if (icon) icon.innerHTML = '<i data-lucide="circle-help" style="color:#e67700"></i>';
+  }
+  set("pipeHistoricoTotal", nInconclusivos);
+  set("pipeInconclusivosPct", `${pctInc}%`);
+  set("pipeOk", nOk);
+  set("pipeOkPct", `${pctOk}%`);
+  set("pipeAlertas", nAlertas);
+  set("pipeAlertasPct", `${pctAlertas}%`);
+
+  const histTotal = Number(historico_total || 0);
+  set("pipeHistoricoResumo", histTotal.toLocaleString("pt-BR"));
+  set("pipeHistoricoResumoSub", histTotal > 0
+    ? `${historico_ok || 0} OK · ${historico_suspeito || 0} alertas · ${s.historico_inconclusivo || 0} inconclusivos`
+    : "desde sempre");
   lucide.createIcons();
 }
 
@@ -2566,7 +2618,7 @@ async function carregarStatsIA() {
         ? `${fila} aguardando · ${analisados} analisados`
         : `fila vazia · ${analisados} analisados`;
     }
-    window._pipeStats = { fila: d.fila || 0, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0 };
+    window._pipeStats = { fila: d.fila || 0, fila_interna: d.fila_interna || 0, medicao: d.medicao || null, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, inconclusivos: d.inconclusivos || 0, pulados: d.pulados || 0, processados: d.processados || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0, historico_inconclusivo: d.historico_inconclusivo || 0 };
     _triggerPipeline();
   } catch(e) {}
 }

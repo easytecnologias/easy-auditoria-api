@@ -786,7 +786,37 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             try:
                 import pathlib as _pl
                 s = json.loads(_pl.Path(stats_file).read_text()) if _pl.Path(stats_file).exists() else {}
-                total = s.get("ok", 0) + s.get("suspeito", 0)
+                total = s.get("ok", 0) + s.get("suspeito", 0) + s.get("inconclusivo", 0)
+                pulados = s.get("pulados", 0)
+                sem_dvr = s.get("sem_dvr", 0)
+                descartado = s.get("descartado", 0)
+                processados = total + sem_dvr + descartado + pulados
+                fila_interna = s.get("fila", 0)
+                fila_conta = fila_interna
+                medida = {}
+                try:
+                    mf = pathlib.Path("/var/lib/pdv-visual-auditor/auditoria_medicao_atual.json")
+                    medida = json.loads(mf.read_text()) if mf.exists() else {}
+                    if medida.get("date") == date_str:
+                        dt_stats = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+                        spy = _spy_path(dt_stats)
+                        total_itens = 0
+                        if spy.exists():
+                            for raw in spy.read_text(errors='replace').splitlines():
+                                raw = raw.strip()
+                                m = LINE_RE.match(raw)
+                                if m and m.group(2) == 'VIT':
+                                    total_itens += 1
+                        baseline = int(medida.get("baseline_total_itens") or 0)
+                        itens_novos = max(0, total_itens - baseline)
+                        fila_conta = max(0, itens_novos - processados)
+                        medida.update({
+                            "total_itens": total_itens,
+                            "itens_novos": itens_novos,
+                            "pendencia_pela_conta": fila_conta,
+                        })
+                except Exception:
+                    medida = {}
                 total_ms = s.get("total_ms", 0)
                 tempos = s.get("tempos", [])
                 media_ms = round(total_ms / total) if total > 0 else 0
@@ -797,22 +827,30 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "date": date_str,
                     "aprovados": s.get("ok", 0),
                     "suspeitos": s.get("suspeito", 0),
-                    "sem_dvr": s.get("sem_dvr", 0),
-                    "descartado": s.get("descartado", 0),
+                    "inconclusivos": s.get("inconclusivo", 0),
+                    "sem_dvr": sem_dvr,
+                    "descartado": descartado,
+                    "pulados": pulados,
                     "total": total,
+                    "ia_total": total,
+                    "processados": processados,
                     "taxa_aprovacao": round(s.get("ok", 0) / total * 100, 1) if total > 0 else 0,
                     "media_s": round(media_ms / 1000, 1) if media_ms else 0,
                     "min_s": round(min(tempos) / 1000, 1) if tempos else 0,
                     "max_s": round(max(tempos) / 1000, 1) if tempos else 0,
                     "ultimo_s": round(tempos[-1] / 1000, 1) if tempos else 0,
                     "tempos_recentes": [round(t / 1000, 1) for t in tempos[-10:]],
-                    "fila": s.get("fila", 0),
+                    "fila": fila_conta,
+                    "fila_conta": fila_conta,
+                    "fila_interna": fila_interna,
+                    "medicao": medida,
                     "historico_total": h.get("total", 0),
                     "historico_ok": h.get("ok", 0),
                     "historico_suspeito": h.get("suspeito", 0),
+                    "historico_inconclusivo": h.get("inconclusivo", 0),
                 }
             except Exception as e:
-                stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}
+                stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "inconclusivos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}
             body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
