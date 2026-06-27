@@ -862,8 +862,12 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 fila_conta = fila_interna
                 medida = {}
                 try:
-                    mf = pathlib.Path("/var/lib/pdv-visual-auditor/auditoria_medicao_atual.json")
-                    medida = json.loads(mf.read_text()) if mf.exists() else {}
+                    marker_file = pathlib.Path("/var/lib/pdv-visual-auditor/measurement_marker.json")
+                    legacy_file = pathlib.Path("/var/lib/pdv-visual-auditor/auditoria_medicao_atual.json")
+                    if marker_file.exists():
+                        medida = json.loads(marker_file.read_text())
+                    elif legacy_file.exists():
+                        medida = json.loads(legacy_file.read_text())
                     dt_stats = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
                     spy = _spy_path(dt_stats)
                     total_itens = 0
