@@ -2727,6 +2727,7 @@ function renderAuditIa(counts = null) {
     const clip = item.clip_categoria
       ? `${escapeText(item.clip_categoria)} ${(Number(item.clip_confianca || 0) * 100).toFixed(0)}%`
       : "-";
+    const photoUrl = auditIaEvidenceUrl(item);
     return `
       <tr>
         <td><span class="${badgeClass}">${escapeText(resultado)}</span></td>
@@ -2739,10 +2740,25 @@ function renderAuditIa(counts = null) {
         <td>${escapeText(item.categoria_pdv || "-")}</td>
         <td>${clip}</td>
         <td>${escapeText(item.motivo || "-")}</td>
+        <td>${photoUrl ? `<button class="audit-photo-button" data-audit-image="${escapeText(photoUrl)}" title="Ver foto analisada"><i data-lucide="image"></i></button>` : "-"}</td>
         <td>${item.alerta_humano ? "Sim" : "Não"}</td>
       </tr>`;
-  }).join("") : `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  }).join("") : `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  tbody.querySelectorAll("[data-audit-image]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(btn.dataset.auditImage, "_blank", "noopener"));
+  });
   lucide.createIcons();
+}
+
+function auditIaEvidenceUrl(item) {
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+  if (!STREAMER || !TOKEN || !item?.image_url) return "";
+  const raw = String(item.image_url);
+  const path = raw.startsWith("/streamer/") ? raw.slice("/streamer".length) : raw;
+  const url = new URL(`${STREAMER}${path}`, location.href);
+  url.searchParams.set("token", TOKEN);
+  return url.pathname + url.search;
 }
 
 function iniciarApp() {

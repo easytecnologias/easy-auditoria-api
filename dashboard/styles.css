@@ -384,7 +384,21 @@ h2 { margin-bottom: 4px; font-size: 15px; }
   font-size: 10px;
 }
 .audit-table {
-  min-width: 920px;
+  min-width: 980px;
+}
+.audit-photo-button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #0b7285;
+  background: #e3fafc;
+}
+.audit-photo-button svg {
+  width: 16px;
+  height: 16px;
 }
 #viewAuditIa {
   display: flex;

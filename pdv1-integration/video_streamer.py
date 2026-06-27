@@ -779,6 +779,28 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
 
         # ── /cupons → lista todos os cupons do dia (do spy file)
         # ── /vlm-stats → estatísticas da IA SmolVLM (lê arquivo compartilhado)
+        if path == '/audit-evidence':
+            if not self._check_token(params): return
+            rel = params.get("file", [""])[0]
+            root = pathlib.Path("/var/lib/pdv-visual-auditor/evidence").resolve()
+            target = (root / rel).resolve()
+            if not str(target).startswith(str(root)) or not target.exists() or target.suffix.lower() not in (".jpg", ".jpeg"):
+                self.send_error(404, "Evidencia nao encontrada")
+                return
+            try:
+                data = target.read_bytes()
+            except Exception:
+                self.send_error(500, "Erro ao ler evidencia")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "max-age=3600")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if path == '/audit-decisions':
             if not self._check_token(params): return
             date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
