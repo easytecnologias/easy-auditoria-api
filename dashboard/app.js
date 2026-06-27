@@ -2519,18 +2519,19 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   const nItens = Number(itens || 0);
   const nFila = Number(fila || 0);
   const nOk = Number(ok || 0);
-  const nAlertas = Number(alertas || 0);
+  const nSuspeitosIa = Number(alertas || 0);
+  const nAlertasHumanos = alerts.filter(alert => alert.state !== "resolved").length;
   const nInconclusivos = Number(s.inconclusivos || 0);
   const nPulados = Number(s.pulados || 0);
   const semImagem = Number(sem_dvr || 0) + Number(descartado || 0);
-  const nProcessados = Number(s.processados ?? (nOk + nAlertas + nInconclusivos + nPulados + semImagem));
+  const nProcessados = Number(s.processados ?? (nOk + nSuspeitosIa + nInconclusivos + nPulados + semImagem));
   const medicao = s.medicao || {};
   const nEntrada = Number(medicao.itens_novos ?? nItens);
   const nPendentes = Math.max(0, Number(medicao.pendencia_pela_conta ?? (nEntrada - nProcessados)));
   const nIaTotal = Number(analisados || 0);
   const pctAnalisados = nEntrada > 0 ? ((nProcessados / nEntrada) * 100).toFixed(1) : "0.0";
   const pctOk = nIaTotal > 0 ? ((nOk / nIaTotal) * 100).toFixed(1) : "0.0";
-  const pctAlertas = nIaTotal > 0 ? ((nAlertas / nIaTotal) * 100).toFixed(1) : "0.0";
+  const pctSuspeitosIa = nIaTotal > 0 ? ((nSuspeitosIa / nIaTotal) * 100).toFixed(1) : "0.0";
   const pctInc = nIaTotal > 0 ? ((nInconclusivos / nIaTotal) * 100).toFixed(1) : "0.0";
 
   set("pipeItens", itens != null ? nItens.toLocaleString("pt-BR") : "-");
@@ -2554,8 +2555,8 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   set("pipeInconclusivosPct", `${pctInc}%`);
   set("pipeOk", nOk);
   set("pipeOkPct", `${pctOk}%`);
-  set("pipeAlertas", nAlertas);
-  set("pipeAlertasPct", `${pctAlertas}%`);
+  set("pipeAlertas", nAlertasHumanos);
+  set("pipeAlertasPct", `${nSuspeitosIa} suspeitos IA · ${pctSuspeitosIa}%`);
 
   const histTotal = Number(historico_total || 0);
   set("pipeHistoricoResumo", histTotal.toLocaleString("pt-BR"));
