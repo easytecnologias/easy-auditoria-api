@@ -779,6 +779,51 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
 
         # ── /cupons → lista todos os cupons do dia (do spy file)
         # ── /vlm-stats → estatísticas da IA SmolVLM (lê arquivo compartilhado)
+        if path == '/audit-decisions':
+            if not self._check_token(params): return
+            date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
+            result_filter = params.get("result", [""])[0].upper()
+            try:
+                limit = max(1, min(1000, int(params.get("limit", ["300"])[0])))
+            except Exception:
+                limit = 300
+            log_file = pathlib.Path("/var/lib/pdv-visual-auditor/audit_decisions_%s.jsonl" % date_str)
+            rows = []
+            counts = {}
+            if log_file.exists():
+                try:
+                    for raw in log_file.read_text(errors='replace').splitlines():
+                        raw = raw.strip()
+                        if not raw:
+                            continue
+                        try:
+                            rec = json.loads(raw)
+                        except Exception:
+                            continue
+                        res = str(rec.get("resultado", "")).upper()
+                        counts[res] = counts.get(res, 0) + 1
+                        if result_filter and res != result_filter:
+                            continue
+                        rows.append(rec)
+                    rows = rows[-limit:]
+                    rows.reverse()
+                except Exception:
+                    rows = []
+            body = json.dumps({
+                "date": date_str,
+                "result": result_filter or "ALL",
+                "limit": limit,
+                "counts": counts,
+                "items": rows,
+            }, ensure_ascii=False).encode('utf-8')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == '/vlm-stats':
             if not self._check_token(params): return
             date_str = params.get("date", [datetime.date.today().strftime('%Y-%m-%d')])[0]
@@ -797,24 +842,25 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 try:
                     mf = pathlib.Path("/var/lib/pdv-visual-auditor/auditoria_medicao_atual.json")
                     medida = json.loads(mf.read_text()) if mf.exists() else {}
-                    if medida.get("date") == date_str:
-                        dt_stats = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-                        spy = _spy_path(dt_stats)
-                        total_itens = 0
-                        if spy.exists():
-                            for raw in spy.read_text(errors='replace').splitlines():
-                                raw = raw.strip()
-                                m = LINE_RE.match(raw)
-                                if m and m.group(2) == 'VIT':
-                                    total_itens += 1
-                        baseline = int(medida.get("baseline_total_itens") or 0)
-                        itens_novos = max(0, total_itens - baseline)
-                        fila_conta = max(0, itens_novos - processados)
-                        medida.update({
-                            "total_itens": total_itens,
-                            "itens_novos": itens_novos,
-                            "pendencia_pela_conta": fila_conta,
-                        })
+                    dt_stats = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+                    spy = _spy_path(dt_stats)
+                    total_itens = 0
+                    if spy.exists():
+                        for raw in spy.read_text(errors='replace').splitlines():
+                            raw = raw.strip()
+                            m = LINE_RE.match(raw)
+                            if m and m.group(2) == 'VIT':
+                                total_itens += 1
+                    baseline = int(medida.get("baseline_total_itens") or 0) if medida.get("date") == date_str else 0
+                    itens_novos = max(0, total_itens - baseline)
+                    fila_conta = max(0, itens_novos - processados)
+                    medida.update({
+                        "date": date_str,
+                        "baseline_total_itens": baseline,
+                        "total_itens": total_itens,
+                        "itens_novos": itens_novos,
+                        "pendencia_pela_conta": fila_conta,
+                    })
                 except Exception:
                     medida = {}
                 total_ms = s.get("total_ms", 0)

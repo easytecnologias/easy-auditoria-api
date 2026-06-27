@@ -161,6 +161,8 @@ let selectedDate = formatDateInput(new Date());
 let pdvFilterAll = true;
 let selectedPdvs = new Set();
 let pdvsConhecidos = [];
+let auditIaItems = [];
+let auditIaResult = "";
 
 const table = document.getElementById("alertsTable");
 const drawer = document.getElementById("alertDrawer");
@@ -168,6 +170,15 @@ const backdrop = document.getElementById("drawerBackdrop");
 const varDrawer = document.getElementById("varDrawer");
 const varBackdrop = document.getElementById("varDrawerBackdrop");
 const toast = document.getElementById("toast");
+
+function escapeText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 async function carregarAlertas() {
   try {
@@ -884,7 +895,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts", "viewReports"];
+const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts", "viewAuditIa", "viewReports"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -902,6 +913,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
                    (id === "viewReceipts" && view === "receipts") ||
                    (id === "viewConsultar" && view === "consultar") ||
                    (id === "viewAlerts" && view === "alerts") ||
+                   (id === "viewAuditIa" && view === "auditIa") ||
                    (id === "viewReports" && view === "reports");
       if (el) el.style.display = show ? "" : "none";
       if (show) isSubView = true;
@@ -913,6 +925,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     else if (view === "receipts") iniciarViewCupons();
     else if (view === "consultar") iniciarViewConsultar();
     else if (view === "alerts") iniciarViewAlertas();
+    else if (view === "auditIa") iniciarViewAuditIa();
     else if (view === "reports") iniciarViewRelatorios();
     else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
       showToast("Tela incluída na próxima etapa do protótipo.");
@@ -2622,6 +2635,114 @@ async function carregarStatsIA() {
     window._pipeStats = { fila: d.fila || 0, fila_interna: d.fila_interna || 0, medicao: d.medicao || null, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, inconclusivos: d.inconclusivos || 0, pulados: d.pulados || 0, processados: d.processados || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0, historico_inconclusivo: d.historico_inconclusivo || 0 };
     _triggerPipeline();
   } catch(e) {}
+}
+
+function iniciarViewAuditIa() {
+  const dateInput = document.getElementById("auditIaDateInput");
+  if (dateInput) {
+    dateInput.value = selectedDate;
+    if (!dateInput.dataset.bound) {
+      dateInput.addEventListener("change", () => {
+        selectedDate = dateInput.value || selectedDate;
+        atualizarRotuloData();
+        carregarAuditIa();
+      });
+      dateInput.dataset.bound = "1";
+    }
+  }
+
+  document.querySelectorAll(".audit-result").forEach(btn => {
+    if (!btn.dataset.bound) {
+      btn.addEventListener("click", () => {
+        auditIaResult = btn.dataset.result || "";
+        document.querySelectorAll(".audit-result").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        carregarAuditIa();
+      });
+      btn.dataset.bound = "1";
+    }
+    btn.classList.toggle("active", (btn.dataset.result || "") === auditIaResult);
+  });
+
+  const search = document.getElementById("auditIaSearchInput");
+  if (search && !search.dataset.bound) {
+    search.addEventListener("input", renderAuditIa);
+    search.dataset.bound = "1";
+  }
+  const refresh = document.getElementById("btnAuditIaRefresh");
+  if (refresh && !refresh.dataset.bound) {
+    refresh.addEventListener("click", carregarAuditIa);
+    refresh.dataset.bound = "1";
+  }
+
+  carregarAuditIa();
+}
+
+async function carregarAuditIa() {
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+  if (!STREAMER || !TOKEN) return;
+  const params = new URLSearchParams({ date: selectedDate, limit: "800", token: TOKEN });
+  if (auditIaResult) params.set("result", auditIaResult);
+  try {
+    const r = await fetch(`${STREAMER}/audit-decisions?${params}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    auditIaItems = data.items || [];
+    renderAuditIa(data.counts || {});
+  } catch (e) {
+    auditIaItems = [];
+    renderAuditIa({});
+  }
+}
+
+function renderAuditIa(counts = null) {
+  const tbody = document.getElementById("auditIaTable");
+  const resumo = document.getElementById("auditIaResumo");
+  if (!tbody) return;
+  const q = (document.getElementById("auditIaSearchInput")?.value || "").trim().toLowerCase();
+  const rows = auditIaItems.filter(item => {
+    if (!q) return true;
+    return [
+      item.produto, item.cupom, item.categoria_pdv, item.clip_categoria,
+      item.motivo, item.descricao_ia, item.resultado,
+    ].some(v => String(v || "").toLowerCase().includes(q));
+  });
+
+  const localCounts = counts || auditIaItems.reduce((acc, item) => {
+    const key = String(item.resultado || "OUTROS").toUpperCase();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  if (resumo) {
+    const ok = localCounts.OK || 0;
+    const suspeito = localCounts.SUSPEITO || 0;
+    const semDvr = localCounts.SEM_DVR || 0;
+    resumo.innerHTML = `<strong>${rows.length}</strong><small>${ok} aprovados · ${suspeito} suspeitos IA · ${semDvr} sem DVR</small>`;
+  }
+
+  tbody.innerHTML = rows.length ? rows.map(item => {
+    const resultado = String(item.resultado || "-").toUpperCase();
+    const badgeClass = resultado === "OK" ? "status-ok" : (resultado === "SUSPEITO" ? "status-alert" : "status-review");
+    const clip = item.clip_categoria
+      ? `${escapeText(item.clip_categoria)} ${(Number(item.clip_confianca || 0) * 100).toFixed(0)}%`
+      : "-";
+    return `
+      <tr>
+        <td><span class="${badgeClass}">${escapeText(resultado)}</span></td>
+        <td>${escapeText(item.time || (item.created_at || "").slice(11, 19))}</td>
+        <td>${escapeText(item.cupom || "-")}</td>
+        <td>
+          <strong>${escapeText(item.produto || "-")}</strong>
+          <small>${escapeText(item.codigo || "")}</small>
+        </td>
+        <td>${escapeText(item.categoria_pdv || "-")}</td>
+        <td>${clip}</td>
+        <td>${escapeText(item.motivo || "-")}</td>
+        <td>${item.alerta_humano ? "Sim" : "Não"}</td>
+      </tr>`;
+  }).join("") : `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  lucide.createIcons();
 }
 
 function iniciarApp() {

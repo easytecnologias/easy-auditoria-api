@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
   <script>if ('scrollRestoration' in history) history.scrollRestoration = 'manual';</script>
   <style>
     .video-simulation #eventVideo {
@@ -80,6 +80,9 @@
             </button>
             <button class="nav-item nav-sub-item" data-view="alerts">
               <i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="auditIa">
+              <i data-lucide="clipboard-check"></i><span>Auditoria IA</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="reports">
               <i data-lucide="chart-no-axes-combined"></i><span>Relatórios</span>
@@ -417,6 +420,56 @@
           <div class="paginacao" id="alertsPaginacao" style="display:none">
             <span id="alertsPaginacaoInfo"></span>
             <div class="paginacao-btns" id="alertsPaginacaoBtns"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View: Auditoria IA -->
+      <section class="workspace" id="viewAuditIa" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Auditoria visual</p>
+            <h1>Auditoria IA</h1>
+            <p>Itens aprovados e suspeitos técnicos para calibrar a leitura da câmera.</p>
+          </div>
+        </div>
+
+        <div class="cupons-filtros">
+          <div class="cupons-datas">
+            <button class="period-button audit-result active" data-result="">Todos</button>
+            <button class="period-button audit-result" data-result="OK">Aprovados</button>
+            <button class="period-button audit-result" data-result="SUSPEITO">Suspeitos IA</button>
+            <button class="period-button audit-result" data-result="SEM_DVR">Sem DVR</button>
+            <input type="date" id="auditIaDateInput" class="cupons-select" style="cursor:pointer">
+          </div>
+          <div class="cupons-filtros-linha">
+            <label class="search-box" style="flex:1;min-width:180px"><i data-lucide="search"></i>
+              <input id="auditIaSearchInput" placeholder="Produto, cupom, categoria ou motivo">
+            </label>
+            <button class="icon-button" id="btnAuditIaRefresh" title="Atualizar" style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card)"><i data-lucide="refresh-cw" style="width:16px;height:16px"></i></button>
+          </div>
+        </div>
+
+        <div class="alerts-panel" style="margin-top:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+            <div id="auditIaResumo" class="pipeline-history" style="margin-left:0"></div>
+          </div>
+          <div class="cupons-table-wrap">
+            <table class="cupons-table audit-table" style="min-width:920px">
+              <thead>
+                <tr>
+                  <th>Resultado</th>
+                  <th>Horário</th>
+                  <th>Cupom</th>
+                  <th>Produto</th>
+                  <th>Categoria PDV</th>
+                  <th>CLIP</th>
+                  <th>Motivo</th>
+                  <th>Alerta</th>
+                </tr>
+              </thead>
+              <tbody id="auditIaTable"></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -995,6 +1048,6 @@
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
