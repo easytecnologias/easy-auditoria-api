@@ -2705,7 +2705,8 @@ function renderAuditIa(counts = null) {
     if (!q) return true;
     return [
       item.produto, item.cupom, item.categoria_pdv, item.clip_categoria,
-      item.motivo, item.descricao_ia, item.resultado,
+      item.motivo, item.descricao_ia, item.resultado, item.risco,
+      item.compatibilidade_decisao,
     ].some(v => String(v || "").toLowerCase().includes(q));
   });
 
@@ -2727,10 +2728,14 @@ function renderAuditIa(counts = null) {
     const clip = item.clip_categoria
       ? `${escapeText(item.clip_categoria)} ${(Number(item.clip_confianca || 0) * 100).toFixed(0)}%`
       : "-";
-    const photoUrl = auditIaEvidenceUrl(item);
+    const compat = auditIaCompatibilityDetails(item);
+    const physical = auditIaPhysicalCell(item);
+    const evidence = auditIaEvidenceButtons(item);
     return `
       <tr>
         <td><span class="${badgeClass}">${escapeText(resultado)}</span></td>
+        <td>${compat}</td>
+        <td>${physical}</td>
         <td>${escapeText(item.time || (item.created_at || "").slice(11, 19))}</td>
         <td>${escapeText(item.cupom || "-")}</td>
         <td>
@@ -2739,22 +2744,77 @@ function renderAuditIa(counts = null) {
         </td>
         <td>${escapeText(item.categoria_pdv || "-")}</td>
         <td>${clip}</td>
-        <td>${escapeText(item.motivo || "-")}</td>
-        <td>${photoUrl ? `<button class="audit-photo-button" data-audit-image="${escapeText(photoUrl)}" title="Ver foto analisada"><i data-lucide="image"></i></button>` : "-"}</td>
+        <td>${escapeText(auditIaReasonSummary(item))}</td>
+        <td>${evidence}</td>
         <td>${item.alerta_humano ? "Sim" : "Não"}</td>
       </tr>`;
-  }).join("") : `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  }).join("") : `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
   tbody.querySelectorAll("[data-audit-image]").forEach(btn => {
     btn.addEventListener("click", () => window.open(btn.dataset.auditImage, "_blank", "noopener"));
   });
   lucide.createIcons();
 }
 
-function auditIaEvidenceUrl(item) {
+function auditIaCompatibilityDetails(item) {
+  const raw = item?.compatibilidade_score;
+  const score = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+  if (!Number.isFinite(score)) return "-";
+  const cls = score >= 80 ? "status-ok" : (score >= 50 ? "status-review" : "status-alert");
+  const risk = item.risco ? `<small>${escapeText(item.risco)}</small>` : "";
+  return `<span class="${cls}">${score}%</span>${risk}`;
+}
+
+function auditIaPhysicalCell(item) {
+  const blocked = item?.fisico_observado?.measurement_blocked || item?.measurement_blocked;
+  const expected = item?.porte_esperado || item?.fisico_esperado?.size || "";
+  const observed = item?.porte_observado || item?.fisico_observado?.size || "";
+  const occRaw = item?.ocupacao_scanner ?? item?.fisico_observado?.scanner_occupancy;
+  const occ = Number(occRaw);
+  const main = blocked ? "ocluido" : (observed && observed !== "unknown" ? observed : "-");
+  const sub = [];
+  if (blocked) sub.push("mao/braco");
+  if (!blocked && Number.isFinite(occ)) sub.push(`${(occ * 100).toFixed(0)}% scanner`);
+  if (expected && expected !== "unknown") sub.push(`esp. ${expected}`);
+  return `<strong>${escapeText(main)}</strong>${sub.length ? `<small>${escapeText(sub.join(" · "))}</small>` : ""}`;
+}
+
+function auditIaReasonSummary(item) {
+  const reasons = Array.isArray(item?.compatibilidade_motivos) ? item.compatibilidade_motivos : [];
+  const physical = auditIaPhysicalSummary(item);
+  if (!reasons.length) return physical ? `${item?.motivo || "-"}: ${physical}` : (item?.motivo || "-");
+  const main = reasons.slice(0, 2).map(r => `${r.ok ? "OK" : "X"} ${r.text || ""}`).join(" | ");
+  return `${item?.motivo || "-"}: ${physical ? physical + " | " : ""}${main}`;
+}
+
+function auditIaPhysicalSummary(item) {
+  const size = item?.porte_observado || item?.fisico_observado?.size || "";
+  const occRaw = item?.ocupacao_scanner ?? item?.fisico_observado?.scanner_occupancy;
+  const occ = Number(occRaw);
+  const parts = [];
+  if (size && size !== "unknown") parts.push(`visto ${size}`);
+  if (Number.isFinite(occ)) parts.push(`ocupa ${(occ * 100).toFixed(0)}%`);
+  return parts.join(", ");
+}
+
+function auditIaEvidenceButtons(item) {
+  const buttons = [
+    ["image_url", "Foto", "image"],
+    ["measure_url", "Medição", "scan-search"],
+    ["focus_url", "Foco", "focus"],
+  ].map(([field, title, icon]) => {
+    const url = auditIaEvidenceUrl(item, field);
+    if (!url) return "";
+    return `<button class="audit-photo-button" data-audit-image="${escapeText(url)}" title="${escapeText(title)}"><i data-lucide="${icon}"></i></button>`;
+  }).filter(Boolean).join("");
+  return buttons ? `<div class="audit-evidence-actions">${buttons}</div>` : "-";
+}
+
+function auditIaEvidenceUrl(item, field = "image_url") {
   const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
   const TOKEN = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
-  if (!STREAMER || !TOKEN || !item?.image_url) return "";
-  const raw = String(item.image_url);
+  const value = item?.[field];
+  if (!STREAMER || !TOKEN || !value) return "";
+  const raw = String(value);
   const path = raw.startsWith("/streamer/") ? raw.slice("/streamer".length) : raw;
   const url = new URL(`${STREAMER}${path}`, location.href);
   url.searchParams.set("token", TOKEN);

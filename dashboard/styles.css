@@ -384,7 +384,12 @@ h2 { margin-bottom: 4px; font-size: 15px; }
   font-size: 10px;
 }
 .audit-table {
-  min-width: 980px;
+  min-width: 1220px;
+}
+.audit-evidence-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .audit-photo-button {
   display: inline-grid;
