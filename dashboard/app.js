@@ -2618,23 +2618,25 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   set("pipeAnalisados", processadosPipeline);
   set("pipeAnalisadosPct", `${pctAnalisados}% processados`);
   set("pipeTempo", (ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-");
-  set("pipeDescartados", incompletosPipeline);
-  set("pipeDescartadosSub", isCupomMode ? "cupons incompletos" : `${nPulados} sem IA · ${sem_dvr || 0} sem DVR`);
+  set("pipeDescartadosLabel", isCupomMode ? "Em analise" : "Descartados");
+  set("pipeDescartados", isCupomMode ? emAnalisePipeline : incompletosPipeline);
+  set("pipeDescartadosSub", isCupomMode ? "cupons em andamento" : `${nPulados} sem IA - ${sem_dvr || 0} sem DVR`);
 
   const inconclusiveCard = document.getElementById("pipeHistoricoTotal")?.closest(".pipeline-step");
   if (inconclusiveCard) {
     inconclusiveCard.style.background = "#fff9db";
-    inconclusiveCard.querySelector(".pipeline-label").textContent = "Inconclusivos";
+    inconclusiveCard.querySelector(".pipeline-label").textContent = isCupomMode ? "Pendentes" : "Inconclusivos";
     inconclusiveCard.querySelector(".pipeline-sub").id = "pipeInconclusivosPct";
     const icon = inconclusiveCard.querySelector(".pipeline-icon");
     if (icon) icon.innerHTML = '<i data-lucide="circle-help" style="color:#e67700"></i>';
   }
-  set("pipeHistoricoTotal", inconclusivosPipeline);
-  set("pipeInconclusivosPct", `${pctInc}%`);
+  set("pipeHistoricoTotal", isCupomMode ? (filaPipeline + emAnalisePipeline) : inconclusivosPipeline);
+  set("pipeInconclusivosPct", isCupomMode ? `${filaPipeline} fila - ${emAnalisePipeline} analise` : `${pctInc}%`);
   set("pipeOk", okPipeline);
   set("pipeOkPct", `${pctOk}%`);
-  set("pipeAlertas", nAlertasHumanos);
-  set("pipeAlertasPct", isCupomMode ? `${suspeitosPipeline} cupons suspeitos · ${pctSuspeitosIa}%` : `${nSuspeitosIa} suspeitos IA · ${pctSuspeitosIa}%`);
+  set("pipeAlertasLabel", isCupomMode ? "Reprovados" : "Alertas humanos");
+  set("pipeAlertas", isCupomMode ? suspeitosPipeline : nAlertasHumanos);
+  set("pipeAlertasPct", isCupomMode ? `${pctSuspeitosIa}% dos auditados` : `${nSuspeitosIa} suspeitos IA - ${pctSuspeitosIa}%`);
 
   const histTotal = Number(historico_total || 0);
   set("pipeHistoricoResumo", histTotal.toLocaleString("pt-BR"));
