@@ -887,15 +887,17 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                         rows = list((s.get("cupoms") or {}).values())
                         enfileirados = len(rows)
                         auditados = sum(1 for r in rows if int(r.get("total") or 0) > 0 and int(r.get("done") or 0) >= int(r.get("total") or 0))
+                        em_analise_cupom = sum(1 for r in rows if 0 < int(r.get("done") or 0) < int(r.get("total") or 0))
                         aprovados_cupom = sum(1 for r in rows if r.get("status") == "OK")
                         suspeitos_cupom = sum(1 for r in rows if r.get("status") == "SUSPEITO")
                         inconclusivos_cupom = sum(1 for r in rows if r.get("status") == "INCONCLUSIVO")
                         incompletos_cupom = sum(1 for r in rows if r.get("status") == "INCOMPLETO")
-                        fila_cupom = max(0, enfileirados - auditados)
+                        fila_cupom = sum(1 for r in rows if int(r.get("done") or 0) == 0)
                         fila_conta = fila_cupom
                         cupom_summary = {
                             "cupoms_enfileirados": enfileirados,
                             "cupoms_auditados": auditados,
+                            "cupoms_em_analise": em_analise_cupom,
                             "cupoms_aprovados": aprovados_cupom,
                             "cupoms_suspeitos": suspeitos_cupom,
                             "cupoms_inconclusivos": inconclusivos_cupom,

@@ -2597,6 +2597,7 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
 
   const entradaPipeline = isCupomMode ? Number(s.cupoms_enfileirados || 0) : nEntrada;
   const filaPipeline = isCupomMode ? Number(s.cupoms_fila || 0) : nPendentes;
+  const emAnalisePipeline = isCupomMode ? Number(s.cupoms_em_analise || 0) : 0;
   const processadosPipeline = isCupomMode ? Number(s.cupoms_auditados || 0) : nProcessados;
   const okPipeline = isCupomMode ? Number(s.cupoms_aprovados || 0) : nOk;
   const suspeitosPipeline = isCupomMode ? Number(s.cupoms_suspeitos || 0) : nSuspeitosIa;
@@ -2613,7 +2614,7 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   set("pipeAnalisadosLabel", isCupomMode ? "Cupons auditados" : "Analisados");
   set("pipeItens", entradaPipeline.toLocaleString("pt-BR"));
   set("pipeFila", filaPipeline);
-  set("pipeFilaSub", isCupomMode ? "aguardando video/analise" : (s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta"));
+  set("pipeFilaSub", isCupomMode ? `${emAnalisePipeline} em analise` : (s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta"));
   set("pipeAnalisados", processadosPipeline);
   set("pipeAnalisadosPct", `${pctAnalisados}% processados`);
   set("pipeTempo", (ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-");
@@ -2697,6 +2698,7 @@ async function carregarStatsIA() {
         : `fila vazia · ${analisados} analisados`;
     }
     window._pipeStats = { fila: d.fila || 0, fila_interna: d.fila_interna || 0, medicao: d.medicao || null, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, inconclusivos: d.inconclusivos || 0, pulados: d.pulados || 0, processados: d.processados || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0, historico_inconclusivo: d.historico_inconclusivo || 0, cupoms_enfileirados: d.cupoms_enfileirados || 0, cupoms_auditados: d.cupoms_auditados || 0, cupoms_aprovados: d.cupoms_aprovados || 0, cupoms_suspeitos: d.cupoms_suspeitos || 0, cupoms_inconclusivos: d.cupoms_inconclusivos || 0, cupoms_incompletos: d.cupoms_incompletos || 0, cupoms_fila: d.cupoms_fila || 0 };
+    window._pipeStats.cupoms_em_analise = d.cupoms_em_analise || 0;
     _triggerPipeline();
   } catch(e) {}
 }
