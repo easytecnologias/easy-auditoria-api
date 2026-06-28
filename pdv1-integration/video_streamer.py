@@ -880,11 +880,15 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     baseline = int(medida.get("baseline_total_itens") or 0) if medida.get("date") == date_str else 0
                     itens_novos = max(0, total_itens - baseline)
                     fila_conta = max(0, itens_novos - processados)
+                    audit_mode = "cupom" if "cupom" in str(medida.get("note", "")).lower() else "item"
+                    if audit_mode == "cupom":
+                        fila_conta = fila_interna
                     medida.update({
                         "date": date_str,
                         "baseline_total_itens": baseline,
                         "total_itens": total_itens,
                         "itens_novos": itens_novos,
+                        "audit_mode": audit_mode,
                         "pendencia_pela_conta": fila_conta,
                     })
                 except Exception:
