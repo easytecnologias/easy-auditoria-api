@@ -860,6 +860,7 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                 processados = total + sem_dvr + descartado + pulados
                 fila_interna = s.get("fila", 0)
                 fila_conta = fila_interna
+                cupom_summary = {}
                 medida = {}
                 try:
                     marker_file = pathlib.Path("/var/lib/pdv-visual-auditor/measurement_marker.json")
@@ -883,6 +884,25 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     audit_mode = "cupom" if "cupom" in str(medida.get("note", "")).lower() else "item"
                     if audit_mode == "cupom":
                         fila_conta = fila_interna
+                        rows = list((s.get("cupoms") or {}).values())
+                        enfileirados = len(rows)
+                        auditados = sum(1 for r in rows if int(r.get("total") or 0) > 0 and int(r.get("done") or 0) >= int(r.get("total") or 0))
+                        aprovados_cupom = sum(1 for r in rows if r.get("status") == "OK")
+                        suspeitos_cupom = sum(1 for r in rows if r.get("status") == "SUSPEITO")
+                        inconclusivos_cupom = sum(1 for r in rows if r.get("status") == "INCONCLUSIVO")
+                        incompletos_cupom = sum(1 for r in rows if r.get("status") == "INCOMPLETO")
+                        fila_cupom = max(0, enfileirados - auditados)
+                        fila_conta = fila_cupom
+                        cupom_summary = {
+                            "cupoms_enfileirados": enfileirados,
+                            "cupoms_auditados": auditados,
+                            "cupoms_aprovados": aprovados_cupom,
+                            "cupoms_suspeitos": suspeitos_cupom,
+                            "cupoms_inconclusivos": inconclusivos_cupom,
+                            "cupoms_incompletos": incompletos_cupom,
+                            "cupoms_fila": fila_cupom,
+                        }
+                        fila_interna = fila_cupom
                     medida.update({
                         "date": date_str,
                         "baseline_total_itens": baseline,
@@ -924,6 +944,7 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     "historico_ok": h.get("ok", 0),
                     "historico_suspeito": h.get("suspeito", 0),
                     "historico_inconclusivo": h.get("inconclusivo", 0),
+                    **cupom_summary,
                 }
             except Exception as e:
                 stats = {"date": date_str, "aprovados": 0, "suspeitos": 0, "inconclusivos": 0, "total": 0, "taxa_aprovacao": 0, "media_s": 0, "min_s": 0, "max_s": 0, "ultimo_s": 0, "tempos_recentes": []}

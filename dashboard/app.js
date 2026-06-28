@@ -2579,6 +2579,70 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   lucide.createIcons();
 }
 
+function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo_s, sem_dvr, descartado, historico_total, historico_ok, historico_suspeito) {
+  const s = window._pipeStats || {};
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const medicao = s.medicao || {};
+  const isCupomMode = (medicao.audit_mode || s.audit_mode) === "cupom";
+  const nItens = Number(itens || 0);
+  const nOk = Number(ok || 0);
+  const nSuspeitosIa = Number(alertas || 0);
+  const nAlertasHumanos = alerts.filter(alert => alert.state !== "resolved").length;
+  const nInconclusivos = Number(s.inconclusivos || 0);
+  const nPulados = Number(s.pulados || 0);
+  const semImagem = Number(sem_dvr || 0) + Number(descartado || 0);
+  const nProcessados = Number(s.processados ?? (nOk + nSuspeitosIa + nInconclusivos + nPulados + semImagem));
+  const nEntrada = Number(medicao.itens_novos ?? nItens);
+  const nPendentes = Math.max(0, Number(medicao.pendencia_pela_conta ?? (nEntrada - nProcessados)));
+
+  const entradaPipeline = isCupomMode ? Number(s.cupoms_enfileirados || 0) : nEntrada;
+  const filaPipeline = isCupomMode ? Number(s.cupoms_fila || 0) : nPendentes;
+  const processadosPipeline = isCupomMode ? Number(s.cupoms_auditados || 0) : nProcessados;
+  const okPipeline = isCupomMode ? Number(s.cupoms_aprovados || 0) : nOk;
+  const suspeitosPipeline = isCupomMode ? Number(s.cupoms_suspeitos || 0) : nSuspeitosIa;
+  const inconclusivosPipeline = isCupomMode ? Number(s.cupoms_inconclusivos || 0) : nInconclusivos;
+  const incompletosPipeline = isCupomMode ? Number(s.cupoms_incompletos || 0) : (semImagem + nPulados);
+  const pctAnalisados = entradaPipeline > 0 ? ((processadosPipeline / entradaPipeline) * 100).toFixed(1) : "0.0";
+  const pctOk = processadosPipeline > 0 ? ((okPipeline / processadosPipeline) * 100).toFixed(1) : "0.0";
+  const pctSuspeitosIa = processadosPipeline > 0 ? ((suspeitosPipeline / processadosPipeline) * 100).toFixed(1) : "0.0";
+  const pctInc = processadosPipeline > 0 ? ((inconclusivosPipeline / processadosPipeline) * 100).toFixed(1) : "0.0";
+
+  set("pipeItensLabel", isCupomMode ? "Cupons fechados" : "Itens no caixa");
+  set("pipeItensSub", isCupomMode ? "enviados para auditoria" : "passaram pelo scanner");
+  set("pipeFilaLabel", isCupomMode ? "Cupons na fila" : "Fila IA");
+  set("pipeAnalisadosLabel", isCupomMode ? "Cupons auditados" : "Analisados");
+  set("pipeItens", entradaPipeline.toLocaleString("pt-BR"));
+  set("pipeFila", filaPipeline);
+  set("pipeFilaSub", isCupomMode ? "aguardando video/analise" : (s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta"));
+  set("pipeAnalisados", processadosPipeline);
+  set("pipeAnalisadosPct", `${pctAnalisados}% processados`);
+  set("pipeTempo", (ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-");
+  set("pipeDescartados", incompletosPipeline);
+  set("pipeDescartadosSub", isCupomMode ? "cupons incompletos" : `${nPulados} sem IA · ${sem_dvr || 0} sem DVR`);
+
+  const inconclusiveCard = document.getElementById("pipeHistoricoTotal")?.closest(".pipeline-step");
+  if (inconclusiveCard) {
+    inconclusiveCard.style.background = "#fff9db";
+    inconclusiveCard.querySelector(".pipeline-label").textContent = "Inconclusivos";
+    inconclusiveCard.querySelector(".pipeline-sub").id = "pipeInconclusivosPct";
+    const icon = inconclusiveCard.querySelector(".pipeline-icon");
+    if (icon) icon.innerHTML = '<i data-lucide="circle-help" style="color:#e67700"></i>';
+  }
+  set("pipeHistoricoTotal", inconclusivosPipeline);
+  set("pipeInconclusivosPct", `${pctInc}%`);
+  set("pipeOk", okPipeline);
+  set("pipeOkPct", `${pctOk}%`);
+  set("pipeAlertas", nAlertasHumanos);
+  set("pipeAlertasPct", isCupomMode ? `${suspeitosPipeline} cupons suspeitos · ${pctSuspeitosIa}%` : `${nSuspeitosIa} suspeitos IA · ${pctSuspeitosIa}%`);
+
+  const histTotal = Number(historico_total || 0);
+  set("pipeHistoricoResumo", histTotal.toLocaleString("pt-BR"));
+  set("pipeHistoricoResumoSub", histTotal > 0
+    ? `${historico_ok || 0} OK · ${historico_suspeito || 0} alertas · ${s.historico_inconclusivo || 0} inconclusivos`
+    : "desde sempre");
+  lucide.createIcons();
+}
+
 async function carregarItensCaixa() {
   try {
     const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
@@ -2626,13 +2690,13 @@ async function carregarStatsIA() {
     const detFila = document.getElementById("metricIAFilaDetalhe");
     if (elFila) elFila.textContent = d.fila ?? 0;
     if (detFila) {
-      const analisados = d.total || 0;
+      const analisados = (d.medicao || {}).audit_mode === "cupom" ? (d.cupoms_auditados || 0) : (d.total || 0);
       const fila = d.fila || 0;
       detFila.textContent = fila > 0
         ? `${fila} aguardando · ${analisados} analisados`
         : `fila vazia · ${analisados} analisados`;
     }
-    window._pipeStats = { fila: d.fila || 0, fila_interna: d.fila_interna || 0, medicao: d.medicao || null, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, inconclusivos: d.inconclusivos || 0, pulados: d.pulados || 0, processados: d.processados || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0, historico_inconclusivo: d.historico_inconclusivo || 0 };
+    window._pipeStats = { fila: d.fila || 0, fila_interna: d.fila_interna || 0, medicao: d.medicao || null, analisados: d.total || 0, ok: d.aprovados || 0, alertas: d.suspeitos || 0, inconclusivos: d.inconclusivos || 0, pulados: d.pulados || 0, processados: d.processados || 0, media_s: d.media_s, ultimo_s: d.ultimo_s, sem_dvr: d.sem_dvr || 0, descartado: d.descartado || 0, historico_total: d.historico_total || 0, historico_ok: d.historico_ok || 0, historico_suspeito: d.historico_suspeito || 0, historico_inconclusivo: d.historico_inconclusivo || 0, cupoms_enfileirados: d.cupoms_enfileirados || 0, cupoms_auditados: d.cupoms_auditados || 0, cupoms_aprovados: d.cupoms_aprovados || 0, cupoms_suspeitos: d.cupoms_suspeitos || 0, cupoms_inconclusivos: d.cupoms_inconclusivos || 0, cupoms_incompletos: d.cupoms_incompletos || 0, cupoms_fila: d.cupoms_fila || 0 };
     _triggerPipeline();
   } catch(e) {}
 }
