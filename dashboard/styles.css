@@ -637,7 +637,7 @@ tbody tr:hover { background: #fbfcfd; }
   .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.35); }
   .mobile-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 199; opacity: 0; pointer-events: none; transition: opacity .25s; }
   .mobile-backdrop.open { opacity: 1; pointer-events: all; }
-  .main-area { width: 100%; margin-left: 0; }
+  .main-area { width: 100%; max-width: 100%; margin-left: 0; }
   .mobile-menu { display: grid; place-items: center; }
   /* Topbar sticky — z-index abaixo do drawer (50) e sidebar (200) */
   .topbar { position: -webkit-sticky; position: sticky; top: 0; z-index: 30; padding: 0 12px; height: 56px; }
@@ -645,7 +645,10 @@ tbody tr:hover { background: #fbfcfd; }
   .period-button span { display: none; }
   .pdv-filter-menu { right: auto; left: 0; }
   .workspace { padding: 20px 16px 32px; }
-  #viewAuditIa { height: calc(100vh - 56px); }
+  #viewAuditIa {
+    height: calc(100vh - 56px);
+    overflow: hidden;
+  }
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .metrics article:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .content-grid, .analytics-grid { grid-template-columns: 1fr; }
@@ -668,6 +671,33 @@ tbody tr:hover { background: #fbfcfd; }
   .cupons-table th:nth-child(3), .cupons-table td:nth-child(3),
   .cupons-table th:nth-child(4), .cupons-table td:nth-child(4),
   .cupons-table th:nth-child(5), .cupons-table td:nth-child(5) { display: none; }
+  #viewAuditIa .cupons-table th,
+  #viewAuditIa .cupons-table td {
+    display: table-cell;
+  }
+  #viewAuditIa .audit-table {
+    min-width: 980px;
+    table-layout: fixed;
+  }
+  #viewAuditIa .cupons-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #viewAuditIa .cupons-filtros-linha {
+    align-items: stretch;
+  }
+  #viewAuditIa .cupons-filtros-linha > .period-button,
+  #viewAuditIa .cupons-filtros-linha > .cupons-select {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    justify-content: center;
+  }
+  #viewAuditIa .search-box {
+    width: 100%;
+  }
   .cupons-col-itens { display: table-cell; }
   .cupons-filtros-linha { flex-wrap: wrap; gap: 6px; }
   .cupons-filtros { padding: 12px; }
