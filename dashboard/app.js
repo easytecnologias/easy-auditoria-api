@@ -2622,6 +2622,17 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   set("pipeDescartadosLabel", isCupomMode ? "Cupons auditados" : "Descartados");
   set("pipeDescartados", isCupomMode ? processadosPipeline : incompletosPipeline);
   set("pipeDescartadosSub", isCupomMode ? `${pctAnalisados}% processados` : `${nPulados} sem IA - ${sem_dvr || 0} sem DVR`);
+  const auditedCard = document.getElementById("pipeDescartados")?.closest(".pipeline-step");
+  if (auditedCard) {
+    auditedCard.style.background = isCupomMode ? "#e3fafc" : "#f8f9fa";
+    const auditedIcon = auditedCard.querySelector(".pipeline-icon");
+    if (auditedIcon) auditedIcon.innerHTML = isCupomMode
+      ? '<i data-lucide="clipboard-check" style="color:#0b7285"></i>'
+      : '<i data-lucide="ban" style="color:#868e96"></i>';
+    auditedCard.querySelectorAll(".pipeline-num, .pipeline-label").forEach(el => {
+      el.style.color = isCupomMode ? "#0b7285" : "#868e96";
+    });
+  }
 
   const inconclusiveCard = document.getElementById("pipeHistoricoTotal")?.closest(".pipeline-step");
   if (inconclusiveCard) {
