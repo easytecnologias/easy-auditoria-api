@@ -2614,16 +2614,20 @@ function atualizarPipeline(itens, fila, analisados, ok, alertas, media_s, ultimo
   set("pipeAnalisadosLabel", isCupomMode ? "Cupons auditados" : "Analisados");
   set("pipeItens", entradaPipeline.toLocaleString("pt-BR"));
   set("pipeFila", filaPipeline);
-  set("pipeFilaSub", isCupomMode ? `${emAnalisePipeline} em analise` : (s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta"));
-  set("pipeAnalisados", processadosPipeline);
-  set("pipeAnalisadosPct", `${pctAnalisados}% processados`);
-  set("pipeTempo", (ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-");
-  set("pipeDescartadosLabel", isCupomMode ? "Em analise" : "Descartados");
-  set("pipeDescartados", isCupomMode ? emAnalisePipeline : incompletosPipeline);
-  set("pipeDescartadosSub", isCupomMode ? "cupons em andamento" : `${nPulados} sem IA - ${sem_dvr || 0} sem DVR`);
+  set("pipeFilaSub", isCupomMode ? "aguardando analise" : (s.fila_interna != null && s.fila_interna !== nPendentes ? `interna: ${s.fila_interna}` : "pendentes pela conta"));
+  set("pipeAnalisadosLabel", isCupomMode ? "Em analise" : "Analisados");
+  set("pipeAnalisados", isCupomMode ? emAnalisePipeline : processadosPipeline);
+  set("pipeAnalisadosPct", isCupomMode ? "cupons em andamento" : `${pctAnalisados}% processados`);
+  set("pipeTempo", isCupomMode ? "" : ((ultimo_s || media_s) ? `${ultimo_s || media_s}s/item` : "-"));
+  set("pipeDescartadosLabel", isCupomMode ? "Cupons auditados" : "Descartados");
+  set("pipeDescartados", isCupomMode ? processadosPipeline : incompletosPipeline);
+  set("pipeDescartadosSub", isCupomMode ? `${pctAnalisados}% processados` : `${nPulados} sem IA - ${sem_dvr || 0} sem DVR`);
 
   const inconclusiveCard = document.getElementById("pipeHistoricoTotal")?.closest(".pipeline-step");
   if (inconclusiveCard) {
+    inconclusiveCard.style.display = isCupomMode ? "none" : "";
+    const previousArrow = inconclusiveCard.previousElementSibling;
+    if (previousArrow?.classList?.contains("pipeline-arrow")) previousArrow.style.display = isCupomMode ? "none" : "";
     inconclusiveCard.style.background = "#fff9db";
     inconclusiveCard.querySelector(".pipeline-label").textContent = isCupomMode ? "Pendentes" : "Inconclusivos";
     inconclusiveCard.querySelector(".pipeline-sub").id = "pipeInconclusivosPct";
