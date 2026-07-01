@@ -171,6 +171,8 @@ let selectedPdvs = new Set();
 let pdvsConhecidos = [];
 let auditIaItems = [];
 let auditIaResult = "";
+let _selAuditIa = new Set();
+let _selAlertas = new Set();
 
 const table = document.getElementById("alertsTable");
 const drawer = document.getElementById("alertDrawer");
@@ -195,6 +197,8 @@ async function carregarAlertas() {
     const resp = await apiFetch(`/api/v1/alerts?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     alerts = await resp.json();
+    _selAlertas.clear();
+    _atualizarBtnSel("btnAlertasClear", _selAlertas);
   } catch (err) {
     // mantem os dados anteriores em caso de falha temporaria de rede
   }
@@ -2717,9 +2721,31 @@ function iniciarViewAlertas() {
   const clearAlertas = document.getElementById("btnAlertasClear");
   if (clearAlertas && !clearAlertas.dataset.bound) {
     clearAlertas.addEventListener("click", () => {
-      _limparEventos({}).then(n => { if (n > 0) carregarAlertas(); });
+      if (_selAlertas.size > 0) {
+        _excluirSelecionados(_selAlertas, carregarAlertas);
+      } else {
+        _limparEventos({}).then(n => { if (n > 0) carregarAlertas(); });
+      }
     });
     clearAlertas.dataset.bound = "1";
+  }
+
+  const selAllAlertas = document.getElementById("selAllAlertas");
+  if (selAllAlertas && !selAllAlertas.dataset.bound) {
+    selAllAlertas.addEventListener("change", () => {
+      const filtrados = alerts.filter(a => a.severity !== "ok");
+      const query = (document.getElementById("searchInput2")?.value || "").toLowerCase();
+      const visiveis = filtrados.filter(a => {
+        if (activeFilter2 !== "all") { if (a.state !== activeFilter2) return false; }
+        return !query || `${a.pdv} ${a.receipt} ${a.product} ${a.event}`.toLowerCase().includes(query);
+      });
+      const pagSlice = visiveis.slice((_alertsPagAtual - 1) * POR_PAGINA, _alertsPagAtual * POR_PAGINA);
+      if (selAllAlertas.checked) pagSlice.forEach(a => _selAlertas.add(a.id));
+      else _selAlertas.clear();
+      _atualizarBtnSel("btnAlertasClear", _selAlertas);
+      renderAlertas2();
+    });
+    selAllAlertas.dataset.bound = "1";
   }
   document.querySelectorAll(".alerts2-filter").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -2771,8 +2797,11 @@ function renderAlertas2() {
 
   const pagSlice = filtrados.slice((_alertsPagAtual - 1) * POR_PAGINA, _alertsPagAtual * POR_PAGINA);
 
-  table2.innerHTML = pagSlice.map(alert => `
-    <tr class="cupons-row" data-id="${alert.id}">
+  table2.innerHTML = pagSlice.map(alert => {
+    const checked = _selAlertas.has(alert.id) ? "checked" : "";
+    return `
+    <tr class="cupons-row${_selAlertas.has(alert.id) ? " row-selected" : ""}" data-id="${alert.id}">
+      <td style="width:28px"><input type="checkbox" class="row-sel" ${checked}></td>
       <td><span class="severity ${alert.severity}"><i></i>${alert.severity === "critical" ? "Crítico" : alert.severity === "warning" ? "Atenção" : "Normal"}</span></td>
       <td>${alert.time}</td>
       <td class="receipt-cell"><strong>${alert.pdv}</strong><span>Cupom ${alert.receipt}</span></td>
@@ -2780,16 +2809,23 @@ function renderAlertas2() {
       <td class="product-cell"><strong>${alert.product}</strong><span>${alert.qty} · ${alert.value}</span></td>
       <td><div class="confidence"><span>${alert.confidence}%</span><i class="confidence-meter"><i style="width:${alert.confidence}%"></i></i></div></td>
       <td><span class="state-badge ${alert.state}">${alert.stateText}</span></td>
-      <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button><button data-action="delete" title="Excluir" style="color:var(--danger,#e53e3e)"><i data-lucide="trash-2"></i></button></div></td>
-    </tr>`).join("");
+      <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
+    </tr>`;
+  }).join("");
 
   table2.querySelectorAll("tr").forEach(row => {
     row.addEventListener("click", event => {
       const a = alerts.find(x => x.id === Number(row.dataset.id));
       if (!a) return;
-      if (event.target.closest("[data-action='delete']")) {
-        _deletarEvento(a.id).then(ok => { if (ok) carregarAlertas(); });
-      } else if (event.target.closest("[data-action='video']")) {
+      const cb = event.target.closest(".row-sel");
+      if (cb) {
+        if (cb.checked) _selAlertas.add(a.id); else _selAlertas.delete(a.id);
+        row.classList.toggle("row-selected", cb.checked);
+        _atualizarBtnSel("btnAlertasClear", _selAlertas);
+        _sincronizarSelAll("selAllAlertas", _selAlertas, pagSlice);
+        return;
+      }
+      if (event.target.closest("[data-action='video']")) {
         selectedAlert = a; document.getElementById("videoButton").click();
       } else {
         openDrawer(a);
@@ -3073,9 +3109,29 @@ function iniciarViewAuditIa() {
   const clearAudit = document.getElementById("btnAuditIaClear");
   if (clearAudit && !clearAudit.dataset.bound) {
     clearAudit.addEventListener("click", () => {
-      _limparEventos({}).then(n => { if (n > 0) carregarAuditIa(); });
+      if (_selAuditIa.size > 0) {
+        _excluirSelecionados(_selAuditIa, carregarAuditIa);
+      } else {
+        _limparEventos({}).then(n => { if (n > 0) carregarAuditIa(); });
+      }
     });
     clearAudit.dataset.bound = "1";
+  }
+
+  const selAllAudit = document.getElementById("selAllAuditIa");
+  if (selAllAudit && !selAllAudit.dataset.bound) {
+    selAllAudit.addEventListener("change", () => {
+      const rows = auditIaItems.filter(item => {
+        const q = (document.getElementById("auditIaSearchInput")?.value || "").trim().toLowerCase();
+        if (!q) return true;
+        return [item.product, item.receipt, item.analysis, item.result, item.note].some(v => String(v || "").toLowerCase().includes(q));
+      });
+      if (selAllAudit.checked) rows.forEach(i => _selAuditIa.add(i.id));
+      else _selAuditIa.clear();
+      _atualizarBtnSel("btnAuditIaClear", _selAuditIa);
+      renderAuditIa();
+    });
+    selAllAudit.dataset.bound = "1";
   }
 
   carregarAuditIa();
@@ -3092,29 +3148,64 @@ async function carregarAuditIa() {
     if (auditIaResult === "OK") items = items.filter(i => i.severity === "ok");
     else if (auditIaResult === "SUSPEITO") items = items.filter(i => i.severity !== "ok");
     auditIaItems = items;
+    _selAuditIa.clear();
+    _atualizarBtnSel("btnAuditIaClear", _selAuditIa);
     renderAuditIa();
   } catch (e) {
     auditIaItems = [];
+    _selAuditIa.clear();
     renderAuditIa();
   }
 }
 
 async function _deletarEvento(id) {
-  if (!confirm("Excluir este registro?")) return false;
   const resp = await apiFetch(`/api/v1/events/${id}`, { method: "DELETE" });
   return resp.ok;
 }
 
 async function _limparEventos(params) {
-  const msg = params.resultado
-    ? `Excluir todos os registros "${params.resultado}" do dia?`
-    : "Excluir TODOS os registros do dia?";
-  if (!confirm(msg)) return 0;
   const qs = new URLSearchParams({ loja: LOJA, data: selectedDate, ...params });
   const resp = await apiFetch(`/api/v1/events?${qs}`, { method: "DELETE" });
   if (!resp.ok) return 0;
   const d = await resp.json();
   return d.deletados || 0;
+}
+
+async function _excluirSelecionados(sel, reload) {
+  for (const id of [...sel]) await _deletarEvento(id);
+  sel.clear();
+  reload();
+}
+
+function _sincronizarSelAll(checkboxId, sel, rows) {
+  const cb = document.getElementById(checkboxId);
+  if (!cb) return;
+  const ids = rows.map(r => r.id);
+  const todos = ids.length > 0 && ids.every(id => sel.has(id));
+  const algum = ids.some(id => sel.has(id));
+  cb.checked = todos;
+  cb.indeterminate = !todos && algum;
+}
+
+function _atualizarBtnSel(btnId, sel) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const n = sel.size;
+  let badge = btn.querySelector(".sel-badge");
+  if (n > 0) {
+    btn.title = `Excluir ${n} selecionado${n > 1 ? "s" : ""}`;
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "sel-badge";
+      badge.style.cssText = "font-size:10px;font-weight:700;position:absolute;top:-5px;right:-5px;background:var(--danger,#e53e3e);color:#fff;border-radius:8px;padding:0 4px;min-width:14px;text-align:center;line-height:14px;pointer-events:none";
+      btn.style.position = "relative";
+      btn.appendChild(badge);
+    }
+    badge.textContent = n;
+  } else {
+    btn.title = "Limpar todos do dia";
+    badge?.remove();
+  }
 }
 
 function renderAuditIa() {
@@ -3137,24 +3228,32 @@ function renderAuditIa() {
   tbody.innerHTML = rows.length ? rows.map(item => {
     const sevLabel = item.severity === "critical" ? "Suspeito" : (item.severity === "warning" ? "Atenção" : "Aprovado");
     const subtitle = (item.analysis || "").replace(/^(PASSO \d:\s*)/i, "").slice(0, 70);
+    const checked = _selAuditIa.has(item.id) ? "checked" : "";
     return `
-      <tr class="cupons-row" data-id="${item.id}">
+      <tr class="cupons-row${_selAuditIa.has(item.id) ? " row-selected" : ""}" data-id="${item.id}">
+        <td style="width:28px"><input type="checkbox" class="row-sel" ${checked}></td>
         <td><span class="severity ${item.severity}"><i></i>${escapeText(sevLabel)}</span></td>
         <td>${escapeText(item.time || "-")}</td>
         <td class="receipt-cell"><strong>${escapeText(item.pdv || "-")}</strong><span>Cupom ${escapeText(item.receipt || "-")}</span></td>
         <td><div class="event-cell"><img class="mini-cctv" src="${item.imageUrl || 'assets/frame-register.svg'}" loading="lazy" onerror="this.src='assets/frame-register.svg';this.onerror=null" alt=""><div><strong>${escapeText(item.event || "-")}</strong><span>${escapeText(subtitle)}</span></div></div></td>
         <td class="product-cell"><strong>${escapeText(item.product || "-")}</strong><span>${escapeText(item.value || "-")}</span></td>
         <td><div class="confidence"><span>${item.confidence || 0}%</span><i class="confidence-meter"><i style="width:${item.confidence || 0}%"></i></i></div></td>
-        <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button><button data-action="delete" title="Excluir" style="color:var(--danger,#e53e3e)"><i data-lucide="trash-2"></i></button></div></td>
+        <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
       </tr>`;
-  }).join("") : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  }).join("") : `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
   tbody.querySelectorAll("tr[data-id]").forEach(row => {
     row.addEventListener("click", event => {
       const item = auditIaItems.find(i => String(i.id) === row.dataset.id);
       if (!item) return;
-      if (event.target.closest("[data-action='delete']")) {
-        _deletarEvento(item.id).then(ok => { if (ok) carregarAuditIa(); });
-      } else if (event.target.closest("[data-action='video']")) {
+      const cb = event.target.closest(".row-sel");
+      if (cb) {
+        if (cb.checked) _selAuditIa.add(item.id); else _selAuditIa.delete(item.id);
+        row.classList.toggle("row-selected", cb.checked);
+        _atualizarBtnSel("btnAuditIaClear", _selAuditIa);
+        _sincronizarSelAll("selAllAuditIa", _selAuditIa, rows);
+        return;
+      }
+      if (event.target.closest("[data-action='video']")) {
         openDrawer(item);
         setTimeout(() => document.getElementById("videoButton").click(), 100);
       } else {

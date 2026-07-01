@@ -879,6 +879,9 @@ tbody tr:hover { background: #fbfcfd; }
 .cupons-row:hover td:last-child i { color: var(--primary); }
 tr.row-visited { background: #f0f8f4 !important; }
 tr.row-visited:hover { background: #e6f4ee !important; }
+tr.row-selected { background: #fff3f3 !important; }
+tr.row-selected:hover { background: #ffe5e5 !important; }
+.row-sel { cursor: pointer; width: 15px; height: 15px; accent-color: var(--danger, #e53e3e); }
 .cupons-op { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cupons-filtros { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px; }
 .cupons-datas { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
