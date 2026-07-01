@@ -3545,9 +3545,13 @@ async function _cfgCarregarPdvs() {
 function _cfgRenderTabs(containerId, onSelect) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (_cfgPdvLista.length <= 1) { el.innerHTML = ""; return; }
+  if (_cfgPdvLista.length <= 1) {
+    // Só um PDV — mostra label fixo indicando qual está sendo configurado
+    el.innerHTML = `<div class="config-pdv-selector"><span class="config-pdv-tab active" style="cursor:default">PDV ${String(_cfgPdv || _cfgPdvLista[0] || "001").padStart(3,"0")}</span></div>`;
+    return;
+  }
   el.innerHTML = `<div class="config-pdv-selector">${
-    _cfgPdvLista.map(p => `<button class="config-pdv-tab${p === _cfgPdv ? " active" : ""}" data-pdv="${p}">PDV ${String(p).padStart(2,"0")}</button>`).join("")
+    _cfgPdvLista.map(p => `<button class="config-pdv-tab${p === _cfgPdv ? " active" : ""}" data-pdv="${p}">PDV ${String(p).padStart(3,"0")}</button>`).join("")
   }</div>`;
   el.querySelectorAll(".config-pdv-tab").forEach(btn => {
     btn.addEventListener("click", () => { _cfgPdv = btn.dataset.pdv; onSelect(); });
