@@ -1,5 +1,13 @@
 let LOJA = (window.APP_CONFIG || {}).LOJA || "loja-106";
+const LOJA_NOME   = (window.APP_CONFIG || {}).LOJA_NOME  || "Loja 106";
+const AMBIENTE    = (window.APP_CONFIG || {}).AMBIENTE   || "Produção";
 const REFRESH_INTERVAL_MS = 15000;
+
+// Aplica valores do config no HTML assim que o DOM estiver pronto
+document.addEventListener("DOMContentLoaded", () => {
+  const ambEl = document.getElementById("ambienteLabel");
+  if (ambEl) ambEl.textContent = AMBIENTE;
+});
 
 // Formatador de moeda BRL com separador de milhar (R$ 29.871,00)
 function fmtBRL(v) {
@@ -252,7 +260,7 @@ function mudarData(novaData) {
   selectedDate = novaData;
   atualizarRotuloData();
   carregarAlertas();
-  carregarVendas();
+  carregarVendas(); carregarGeminiCredito();
   carregarItensCaixa();
   carregarStatsIA();
   // Recarregar cupons do PDV VAR se estiver visível
@@ -320,7 +328,7 @@ function aplicarFiltroPdv() {
   renderHealth();
   renderHealthMetric();
   carregarAlertas();
-  carregarVendas();
+  carregarVendas(); carregarGeminiCredito();
 }
 
 async function carregarVendas() {
@@ -338,9 +346,34 @@ async function carregarVendas() {
   }
 }
 
+async function carregarGeminiCredito() {
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+  if (!STREAMER || !TOKEN) return;
+  try {
+    const r = await fetch(`${STREAMER}/gemini-stats-total?token=${TOKEN}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const restante = Number(d.credito_restante_brl || 0);
+    const gasto    = Number(d.gasto_total_brl || 0);
+    const fotos    = d.fotos_analisadas || 0;
+    const el = document.getElementById("metricGeminiCredito");
+    const det = document.getElementById("metricGeminiDetalhe");
+    if (el) {
+      el.textContent = `R$ ${restante.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      el.style.color = restante < 5 ? "#c92a2a" : (restante < 20 ? "#b86b00" : "");
+    }
+    if (det) det.textContent = `${fotos} fotos · R$ ${gasto.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} gastos`;
+  } catch (e) {
+    // mantem valores anteriores em caso de falha temporaria
+  }
+}
+
 function renderAlerts() {
   const query = document.getElementById("searchInput").value.toLowerCase();
-  const rows = alerts.filter(alert => {
+  // Alertas recentes mostra só divergências reais — itens conferidos ficam na Auditoria IA
+  const alertasReais = alerts.filter(a => a.severity !== "ok");
+  const rows = alertasReais.filter(alert => {
     const filterMatch = activeFilter === "all"
       || (activeFilter === "critical" && alert.severity === "critical")
       || (activeFilter === "review" && alert.state !== "resolved")
@@ -394,13 +427,15 @@ function renderHealth() {
     return;
   }
   grid.innerHTML = filtrado.map(item => `
-    <div class="health-row">
-      <strong>PDV ${item.pdv}</strong>
+    <div class="health-row" style="cursor:pointer" title="Abrir monitor do PDV ${item.pdv}" onclick="abrirMonitorTecnico(${item.pdv})">
+      <strong>PDV ${String(item.pdv).padStart(2,"0")}</strong>
       ${serviceState(item.bridge)}
       ${serviceState(item.imhdx)}
       ${serviceState(item.audit)}
+      <i data-lucide="chevron-right" style="width:13px;height:13px;color:var(--muted);flex-shrink:0"></i>
     </div>
   `).join("");
+  lucide.createIcons();
 }
 
 function serviceState(state) {
@@ -417,11 +452,13 @@ function renderHealthMetric() {
 }
 
 function renderAlertMetrics() {
-  const total = alerts.length;
-  const pendentes = alerts.filter(alert => alert.state !== "resolved").length;
-  const criticos = alerts.filter(alert => alert.severity === "critical" && alert.state !== "resolved").length;
-  const emRevisao = alerts.filter(alert => alert.state !== "resolved" && alert.severity !== "critical").length;
-  const resolvidos = alerts.filter(alert => alert.state === "resolved").length;
+  // Métricas de Alertas consideram só divergências reais — itens conferidos (severity "ok") são Auditoria IA
+  const alertasReais = alerts.filter(a => a.severity !== "ok");
+  const total = alertasReais.length;
+  const pendentes = alertasReais.filter(alert => alert.state !== "resolved").length;
+  const criticos = alertasReais.filter(alert => alert.severity === "critical" && alert.state !== "resolved").length;
+  const emRevisao = alertasReais.filter(alert => alert.state !== "resolved" && alert.severity !== "critical").length;
+  const resolvidos = alertasReais.filter(alert => alert.state === "resolved").length;
 
   document.getElementById("navAlertsBadge").textContent = pendentes;
   document.getElementById("notifBadge").textContent = pendentes;
@@ -447,26 +484,7 @@ function renderAlertMetrics() {
   document.getElementById("alertsFooterText").textContent = `Mostrando ${total} alertas de hoje`;
 }
 
-function renderOccurrenceTypes() {
-  const list = document.getElementById("occurrenceTypesList");
-  if (alerts.length === 0) {
-    list.innerHTML = `<div><span>Sem dados ainda</span><b>-</b><i><em style="width:0%"></em></i></div>`;
-    return;
-  }
-
-  const contagem = {};
-  alerts.forEach(alert => {
-    contagem[alert.event] = (contagem[alert.event] || 0) + 1;
-  });
-
-  const total = alerts.length;
-  const tipos = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
-
-  list.innerHTML = tipos.map(([nome, qtd]) => {
-    const pct = Math.round((qtd / total) * 100);
-    return `<div><span>${nome}</span><b>${pct}%</b><i><em style="width:${pct}%"></em></i></div>`;
-  }).join("");
-}
+function renderOccurrenceTypes() { /* removido — seção retirada do dashboard */ }
 
 const FRAME_FALLBACKS = {
   before: "assets/frame-before.svg",
@@ -541,6 +559,10 @@ function _parsearAnaliseIA(analysis, note) {
     const mVlm = linha.match(/SmolVLM:\s*(.+?)(\s*\(.*\))?\s*$/i);
     if (mVlm) result.smolvlm = mVlm[1].trim();
   }
+  // Se nada do formato antigo (CLIP/SmolVLM) bateu, é análise Gemini em texto livre — mostra inteira
+  if (result.clip === "—" && result.smolvlm === "—" && analysis) {
+    result.smolvlm = analysis.replace(/^Groq Vision[^:]*:\s*/i, "").replace(/^Gemini Vision[^:]*:\s*/i, "");
+  }
   if (note) result.obs = note;
   return result;
 }
@@ -562,10 +584,8 @@ function openDrawer(alert) {
   // Diagnóstico IA
   const ia = _parsearAnaliseIA(alert.analysis, alert.note);
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || "—"; };
-  set("iaProdutoRegistrado", ia.produto !== "—" ? ia.produto : alert.product);
-  set("iaCategoriaEsperada", ia.categoria);
-  set("iaClipDetectou",      ia.clip);
-  set("iaSmolvlm",           ia.smolvlm);
+  set("iaProdutoRegistrado", alert.product);
+  set("iaSmolvlm", ia.smolvlm !== "—" ? ia.smolvlm : (alert.analysis || "Sem análise registrada"));
   const obsLinha = document.getElementById("iaObsLinha");
   if (ia.obs && obsLinha) {
     obsLinha.style.display = "";
@@ -586,11 +606,13 @@ function openDrawer(alert) {
   const mainEv = document.getElementById("mainEvidence");
   mainEv.src = "assets/frame-register.svg";
   if (alert.imageUrl) {
-    const loadImg = url => mediaObjectUrl(url)
-      .then(blobUrl => { mainEv.src = blobUrl; })
-      .catch(() => {});
-    if (alert.imageUrl.startsWith('/streamer/') || alert.imageUrl.startsWith('/api/')) {
-      loadImg(alert.imageUrl);
+    if (alert.imageUrl.startsWith('/streamer/')) {
+      // URLs do streamer já trazem o token próprio na query string — não usar JWT do usuário aqui
+      mainEv.src = alert.imageUrl;
+    } else if (alert.imageUrl.startsWith('/api/')) {
+      mediaObjectUrl(alert.imageUrl)
+        .then(blobUrl => { mainEv.src = blobUrl; })
+        .catch(() => {});
     }
   }
 
@@ -613,6 +635,8 @@ function closeDrawer() {
   drawer.setAttribute("aria-hidden", "true");
 }
 
+let _voltarParaCupomsAposVideo = false;
+
 function openVarDrawer() {
   varDrawer.classList.add("open");
   varBackdrop.classList.add("open");
@@ -626,6 +650,19 @@ function closeVarDrawer() {
   // Restaurar tab bar para próxima abertura (pode ter sido ocultada pelo vídeo genérico)
   const tabBar = varDrawer.querySelector(".var-tab-bar");
   if (tabBar) tabBar.style.display = "";
+
+  // Se o vídeo foi aberto a partir de Cupons, devolve o usuário pra lá em vez de deixá-lo no PDV VAR
+  if (_voltarParaCupomsAposVideo) {
+    _voltarParaCupomsAposVideo = false;
+    if (_varCuponsTimer) { clearInterval(_varCuponsTimer); _varCuponsTimer = null; }
+    document.getElementById("pdvCardsGrid").style.display = "";
+    document.getElementById("pdvVarSearch").style.display = "none";
+    document.getElementById("viewPdvCards").style.display = "none";
+    document.getElementById("viewReceipts").style.display = "";
+    document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
+    document.querySelectorAll(".nav-item[data-view='receipts']").forEach(n => n.classList.add("active"));
+    iniciarViewCupons();
+  }
 }
 
 // ── Vídeo genérico no varDrawer (alertas, consultar) ──────────────────────
@@ -895,7 +932,7 @@ document.querySelectorAll(".nav-group-toggle").forEach(toggle => {
   });
 });
 
-const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts", "viewAuditIa", "viewReports"];
+const VIEWS = ["viewUsers", "viewLojas", "viewPdvCards", "viewReceipts", "viewConsultar", "viewAlerts", "viewAuditIa", "viewReports", "viewConfigLoja", "viewConfigAuditoria", "viewConfigCamera", "viewConfigNotificacoes"];
 
 document.querySelectorAll(".nav-item[data-view]").forEach(item => {
   item.addEventListener("click", () => {
@@ -907,19 +944,23 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     let isSubView = false;
     VIEWS.forEach(id => {
       const el = document.getElementById(id);
-      const show = (id === "viewUsers" && view === "users") ||
+      const show = (id === "viewUsers" && (view === "users" || view === "config-usuarios")) ||
                    (id === "viewLojas" && view === "lojas") ||
                    (id === "viewPdvCards" && view === "terminals") ||
                    (id === "viewReceipts" && view === "receipts") ||
                    (id === "viewConsultar" && view === "consultar") ||
                    (id === "viewAlerts" && view === "alerts") ||
                    (id === "viewAuditIa" && view === "auditIa") ||
-                   (id === "viewReports" && view === "reports");
+                   (id === "viewReports" && view === "reports") ||
+                   (id === "viewConfigLoja" && view === "config-loja") ||
+                   (id === "viewConfigAuditoria" && view === "config-auditoria") ||
+                   (id === "viewConfigCamera" && view === "config-camera") ||
+                   (id === "viewConfigNotificacoes" && view === "config-notificacoes");
       if (el) el.style.display = show ? "" : "none";
       if (show) isSubView = true;
     });
     if (mainWorkspace) mainWorkspace.style.display = isSubView ? "none" : "";
-    if (view === "users") carregarUsuarios();
+    if (view === "users" || view === "config-usuarios") carregarUsuarios();
     else if (view === "lojas") carregarLojas();
     else if (view === "terminals") carregarCardsPdv();
     else if (view === "receipts") iniciarViewCupons();
@@ -927,9 +968,10 @@ document.querySelectorAll(".nav-item[data-view]").forEach(item => {
     else if (view === "alerts") iniciarViewAlertas();
     else if (view === "auditIa") iniciarViewAuditIa();
     else if (view === "reports") iniciarViewRelatorios();
-    else if (view !== "overview" && view !== "alerts" && view !== "reports" && view !== "occurrences") {
-      showToast("Tela incluída na próxima etapa do protótipo.");
-    }
+    else if (view === "config-loja") iniciarViewConfigLoja();
+    else if (view === "config-auditoria") iniciarViewConfigAuditoria();
+    else if (view === "config-camera") iniciarViewConfigCamera();
+    else if (view === "config-notificacoes") iniciarViewConfigNotificacoes();
   });
 });
 
@@ -957,7 +999,7 @@ document.getElementById("lojaFilterButton").addEventListener("click", async () =
         if (nomeEl) nomeEl.textContent = "Todas as lojas";
         lista.innerHTML = "";
         menu.classList.remove("open");
-        carregarAlertas(); carregarVendas(); carregarHealth();
+        carregarAlertas(); carregarVendas(); carregarGeminiCredito(); carregarHealth();
       });
       lista.querySelectorAll(".lojaCheck").forEach(inp => {
         inp.addEventListener("change", () => {
@@ -968,7 +1010,7 @@ document.getElementById("lojaFilterButton").addEventListener("click", async () =
           if (nomeEl) nomeEl.textContent = loja ? loja.nome : LOJA;
           lista.innerHTML = "";
           menu.classList.remove("open");
-          carregarAlertas(); carregarVendas(); carregarHealth();
+          carregarAlertas(); carregarVendas(); carregarGeminiCredito(); carregarHealth();
         });
       });
     }
@@ -1158,22 +1200,179 @@ async function carregarCardsPdv() {
   }
 
   const dot = s => `<span class="pdv-status-dot ${s === "online" ? "online" : s === "warning" ? "warning" : "offline"}"></span>`;
-  container.innerHTML = varHealthData.map(h => `
+  const pill = (label, s) => `<span class="pdv-status-pill">${dot(s)}${label}</span>`;
+  container.innerHTML = varHealthData.map(h => {
+    const geral = (h.bridge === "online" && h.imhdx === "online") ? "online" : "offline";
+    return `
     <div class="pdv-card" data-pdv="${h.pdv}">
-      <div class="pdv-card-name">PDV ${String(h.pdv).padStart(2,"0")}</div>
-      <div class="pdv-card-loja">Loja 106</div>
-      <div class="pdv-card-status">
-        <div class="pdv-status-row"><span>Bridge</span>${dot(h.bridge)}</div>
-        <div class="pdv-status-row"><span>iMHDX</span>${dot(h.imhdx)}</div>
-        <div class="pdv-status-row"><span>Auditoria</span>${dot(h.audit)}</div>
+      <div class="pdv-card-header">
+        <div class="pdv-card-icon"><i data-lucide="monitor"></i></div>
+        <div class="pdv-card-title">
+          <div class="pdv-card-name">PDV ${String(h.pdv).padStart(2,"0")}</div>
+          <div class="pdv-card-loja">${LOJA_NOME}</div>
+        </div>
+        <span class="pdv-overall-badge ${geral}">${geral === "online" ? "Online" : "Atenção"}</span>
       </div>
-      <div class="pdv-card-footer"><i data-lucide="search"></i> Consultar cupom</div>
-    </div>
-  `).join("");
+      <div class="pdv-card-status">
+        ${pill("Bridge", h.bridge)}
+        ${pill("iMHDX", h.imhdx)}
+        ${pill("Auditoria", h.audit)}
+      </div>
+      <div class="pdv-card-actions">
+        <button data-pdv-search="${h.pdv}" title="Consultar cupom"><i data-lucide="search"></i></button>
+        <button data-pdv-live="${h.pdv}" title="Câmera ao vivo"><i data-lucide="video"></i></button>
+      </div>
+    </div>`;
+  }).join("");
 
-  container.querySelectorAll(".pdv-card").forEach(card => {
-    card.addEventListener("click", () => abrirVarSearch(card.dataset.pdv));
+  container.querySelectorAll("[data-pdv-search]").forEach(el => {
+    el.addEventListener("click", e => {
+      e.stopPropagation();
+      abrirVarSearch(el.dataset.pdvSearch);
+    });
   });
+  container.querySelectorAll("[data-pdv-live]").forEach(el => {
+    el.addEventListener("click", e => {
+      e.stopPropagation();
+      abrirCameraAoVivo(el.dataset.pdvLive);
+    });
+  });
+  lucide.createIcons();
+}
+
+// ── Câmera ao vivo (stream MJPEG contínuo via streamer) ──────────────────────
+function abrirCameraAoVivo(pdv) {
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+  const modal   = document.getElementById("liveCameraModal");
+  const img     = document.getElementById("liveCameraImg");
+  const label   = document.getElementById("liveCameraLabel");
+  const loading = document.getElementById("liveCameraLoading");
+  if (!modal || !img) return;
+
+  label.textContent = `PDV ${String(pdv).padStart(2,"0")} · ${LOJA_NOME}`;
+  loading.style.display = "flex";
+  modal.style.display = "flex";
+  img.onload = () => { loading.style.display = "none"; };
+  // <img> com fonte MJPEG: o navegador renderiza os frames conforme chegam, sem JS de polling
+  img.src = `${STREAMER}/live-stream?token=${TOKEN}&_=${Date.now()}`;
+}
+
+function fecharCameraAoVivo() {
+  const modal   = document.getElementById("liveCameraModal");
+  const img     = document.getElementById("liveCameraImg");
+  const loading = document.getElementById("liveCameraLoading");
+  if (img) { img.onload = null; img.src = ""; }
+  if (loading) loading.style.display = "none";
+  if (modal) modal.style.display = "none";
+}
+
+// ── Monitor Técnico ──────────────────────────────────────────────────────────
+function fecharMonitorTecnico() {
+  document.getElementById("monitorTecnicoModal").style.display = "none";
+}
+
+async function abrirMonitorTecnico(pdvParam) {
+  const modal = document.getElementById("monitorTecnicoModal");
+  const body  = document.getElementById("monitorTecnicoBody");
+  const label = document.getElementById("monitorPdvLabel");
+  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+
+  const disponiveis = health.filter(item => pdvSelecionado(item.pdv));
+
+  // Se nenhum PDV foi especificado e há mais de um, mostra seletor
+  if (!pdvParam && disponiveis.length > 1) {
+    label.textContent = `${disponiveis.length} PDVs · ${LOJA_NOME}`;
+    modal.style.display = "flex";
+    lucide.createIcons();
+    body.innerHTML = `
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Selecione o PDV para inspecionar:</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${disponiveis.map(item => {
+          const geral = (item.bridge === "online" && item.imhdx === "online") ? "#2f9e44" : "#e03131";
+          return `<button onclick="abrirMonitorTecnico(${item.pdv})"
+            style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);cursor:pointer;text-align:left">
+            <span style="width:10px;height:10px;border-radius:50%;background:${geral};flex-shrink:0"></span>
+            <div>
+              <div style="font-weight:700;font-size:14px">PDV ${String(item.pdv).padStart(2,"0")}</div>
+              <div style="font-size:11px;color:var(--muted)">Bridge: ${item.bridge} · iMHDX: ${item.imhdx} · Audit: ${item.audit}</div>
+            </div>
+            <i data-lucide="chevron-right" style="width:15px;height:15px;color:var(--muted);margin-left:auto"></i>
+          </button>`;
+        }).join("")}
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  const pdv = pdvParam || disponiveis[0]?.pdv || 1;
+  const temMultiplos = disponiveis.length > 1;
+
+  label.textContent = `PDV ${String(pdv).padStart(2,"0")} · ${LOJA_NOME}`;
+  modal.style.display = "flex";
+  lucide.createIcons();
+
+  // ── Coleta paralela de dados ─────────────────────────────────────────────
+  const t0 = Date.now();
+  const [statsRes, geminiRes, snapshotRes] = await Promise.allSettled([
+    fetch(`${STREAMER}/stats?date=${selectedDate}&token=${TOKEN}`).then(r => r.ok ? r.json() : null),
+    fetch(`${STREAMER}/gemini-stats-total?token=${TOKEN}`).then(r => r.ok ? r.json() : null),
+    fetch(`${STREAMER}/live-snapshot?token=${TOKEN}&_=${Date.now()}`).then(r => ({ ok: r.ok, ms: Date.now() - t0 })),
+  ]);
+  const stats  = statsRes.value;
+  const gemini = geminiRes.value;
+  const dvr    = snapshotRes.value || { ok: false, ms: 0 };
+
+  const ok  = s => `<span style="color:#2f9e44;font-weight:600">● Online</span>`;
+  const off = s => `<span style="color:#e03131;font-weight:600">● Offline</span>`;
+  const warn = s => `<span style="color:#f08c00;font-weight:600">● Atenção</span>`;
+  const dot = s => s === "online" ? ok() : s === "warning" ? warn() : off();
+
+  const sectionStyle = "background:var(--bg);border-radius:10px;padding:14px 16px";
+  const rowStyle = "display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px";
+  const lastRowStyle = "display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px";
+
+  const h = health.find(x => x.pdv == pdv) || {};
+
+  body.innerHTML = `
+    <!-- Conectividade dos serviços -->
+    <div style="${sectionStyle}">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">Serviços</div>
+      <div style="${rowStyle}"><span>Bridge (spy file)</span>${dot(h.bridge)}</div>
+      <div style="${rowStyle}"><span>iMHDX (DVR)</span>${dot(h.imhdx)}</div>
+      <div style="${rowStyle}"><span>Auditoria IA</span>${dot(h.audit)}</div>
+      <div style="${lastRowStyle}"><span>Câmera ao vivo (snapshot)</span>${dvr.ok ? `<span style="color:#2f9e44;font-weight:600">● OK <span style="font-weight:400;color:var(--muted)">${dvr.ms}ms</span></span>` : `<span style="color:#e03131;font-weight:600">● Sem resposta</span>`}</div>
+    </div>
+
+    <!-- Atividade do dia -->
+    <div style="${sectionStyle}">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">Atividade — ${selectedDate}</div>
+      <div style="${rowStyle}"><span>Cupons processados</span><strong>${stats?.total_cupons ?? '—'}</strong></div>
+      <div style="${lastRowStyle}"><span>Itens registrados</span><strong>${stats?.total_itens ?? '—'}</strong></div>
+    </div>
+
+    <!-- Gemini / IA -->
+    <div style="${sectionStyle}">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">IA Gemini</div>
+      <div style="${rowStyle}"><span>Crédito restante</span><strong style="color:${(gemini?.credito_restante_brl||0)<5?'#e03131':(gemini?.credito_restante_brl||0)<20?'#f08c00':'#2f9e44'}">R$ ${Number(gemini?.credito_restante_brl||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>
+      <div style="${rowStyle}"><span>Fotos analisadas (total)</span><strong>${gemini?.total_fotos ?? '—'}</strong></div>
+      <div style="${lastRowStyle}"><span>Custo total</span><strong>R$ ${Number(gemini?.total_gasto_brl||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>
+    </div>
+
+    <!-- Ações rápidas -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="fecharMonitorTecnico();abrirCameraAoVivo(${pdv})" style="flex:1;min-width:140px;height:38px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--primary)">
+        <i data-lucide="video" style="width:15px;height:15px"></i> Câmera ao vivo
+      </button>
+      <button onclick="mudarData(selectedDate);fecharMonitorTecnico()" style="flex:1;min-width:140px;height:38px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px">
+        <i data-lucide="refresh-cw" style="width:15px;height:15px"></i> Recarregar dados
+      </button>
+      ${temMultiplos ? `<button onclick="abrirMonitorTecnico()" style="flex:1;min-width:140px;height:38px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px">
+        <i data-lucide="arrow-left" style="width:15px;height:15px"></i> Outros PDVs
+      </button>` : ""}
+    </div>
+  `;
   lucide.createIcons();
 }
 
@@ -1183,7 +1382,7 @@ function abrirVarSearch(pdv) {
   varPdvSelecionado = pdv;
   document.getElementById("pdvCardsGrid").style.display = "none";
   document.getElementById("pdvVarSearch").style.display = "";
-  document.getElementById("varBreadcrumb").textContent = `PDV ${String(pdv).padStart(2,"0")} · Loja 106`;
+  document.getElementById("varBreadcrumb").textContent = `PDV ${String(pdv).padStart(2,"0")} · ${LOJA_NOME}`;
   document.getElementById("varCupomInput").value = "";
   document.getElementById("varItemInput").value = "";
   lucide.createIcons();
@@ -1830,7 +2029,7 @@ document.getElementById("formVarCupom").addEventListener("submit", async (e) => 
   varTipoAtivo = tipo;
 
   document.getElementById("varResultModalBreadcrumb").textContent =
-    `PDV ${String(varPdvSelecionado).padStart(2,"0")} · Loja 106`;
+    `PDV ${String(varPdvSelecionado).padStart(2,"0")} · ${LOJA_NOME}`;
   document.getElementById("varResultModalTitle").textContent =
     `Cupom ${cupom}` + (lista.length ? ` — ${lista.length} evento${lista.length !== 1 ? "s" : ""}` : "");
 
@@ -1920,8 +2119,22 @@ function _aplicarFiltrosCupons(pagina) {
   }
   const pagSlice = _cuponsListaFiltrada.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
   const totalVal = _cuponsListaFiltrada.reduce((s, c) => s + (c.total || 0), 0);
-  tbody.innerHTML = pagSlice.map(c => `
-    <tr data-cupom="${c.numero}">
+
+  // DVR leva ~90-120s após o fechamento do cupom pra disponibilizar foto/vídeo
+  const _agora = Date.now();
+  const _videoDisponivel = c => {
+    if (!c.fechou || !isHoje(selectedDate)) return true; // dias passados: sempre disponível
+    const [hh, mm, ss] = c.fechou.split(":").map(Number);
+    const fechouMs = new Date(selectedDate + "T00:00:00").setHours(hh, mm, ss || 0, 0);
+    return (_agora - fechouMs) >= 120000;
+  };
+
+  tbody.innerHTML = pagSlice.map(c => {
+    const disponivel = _videoDisponivel(c);
+    const corFaixa = disponivel ? "#2f9e44" : "#f59f00";
+    const tituloFaixa = disponivel ? "Vídeo e fotos disponíveis" : "DVR ainda processando — disponível em instantes";
+    return `
+    <tr class="cupons-row" data-cupom="${c.numero}" style="border-left:3px solid ${corFaixa}" title="${tituloFaixa}">
       <td>${c.abriu ? c.abriu.slice(0,5) : '—'}</td>
       <td><strong>${c.numero}</strong></td>
       <td class="cupons-op">${c.operador || '—'}</td>
@@ -1932,13 +2145,20 @@ function _aplicarFiltrosCupons(pagina) {
       <td>
         <div style="display:flex;justify-content:center;gap:4px">
           <button class="icon-button cupom-btn-nota" data-cupom="${c.numero}" title="Ver cupom"><i data-lucide="file-text" style="width:16px;height:16px"></i></button>
-          <button class="icon-button cupom-btn-video" data-cupom="${c.numero}" title="Ver vídeo"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button>
+          <button class="icon-button cupom-btn-video" data-cupom="${c.numero}" title="${tituloFaixa}" ${disponivel ? "" : "disabled style=\"opacity:.4;cursor:not-allowed\""}><i data-lucide="play-circle" style="width:16px;height:16px;color:${disponivel ? "var(--primary)" : "var(--muted)"}"></i></button>
         </div>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   footer.textContent = `${_cuponsListaFiltrada.length} de ${_cuponsTodos.length} cupons · Total R$ ${totalVal.toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}`;
   lucide.createIcons();
   _renderPaginacao("cuponsPaginacaoInfo","cuponsPaginacaoBtns","cuponsPaginacao", pagina, _cuponsListaFiltrada.length, p => _aplicarFiltrosCupons(p));
+
+  // Reaplicar highlight da linha que foi visitada (persiste após re-renders)
+  if (_cupomLinhaAtiva) {
+    const linhaAtiva = tbody.querySelector(`tr[data-cupom="${_cupomLinhaAtiva}"]`);
+    if (linhaAtiva) linhaAtiva.classList.add("row-visited");
+  }
 
   tbody.querySelectorAll(".cupom-btn-nota").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); abrirCupomDrawer(btn.dataset.cupom); });
@@ -1947,6 +2167,8 @@ function _aplicarFiltrosCupons(pagina) {
     btn.addEventListener("click", e => {
       e.stopPropagation();
       const num = btn.dataset.cupom;
+      _cupomLinhaAtiva = num;
+      _voltarParaCupomsAposVideo = true;
       varPdvSelecionado = 1;
       document.getElementById("viewReceipts").style.display = "none";
       document.getElementById("viewPdvCards").style.display = "";
@@ -2012,6 +2234,8 @@ document.getElementById("cuponsOperadorFilter")?.addEventListener("change", () =
 document.getElementById("cuponsPeriodoFilter")?.addEventListener("change", () => _aplicarFiltrosCupons(1));
 
 // ── Receipt Drawer ────────────────────────────────────────────────────────────
+let _cupomLinhaAtiva = null; // número do cupom que teve o drawer aberto por último
+
 function openReceiptDrawer() {
   document.getElementById("receiptDrawer").classList.add("open");
   document.getElementById("receiptDrawer").setAttribute("aria-hidden","false");
@@ -2021,6 +2245,11 @@ function closeReceiptDrawer() {
   document.getElementById("receiptDrawer").classList.remove("open");
   document.getElementById("receiptDrawer").setAttribute("aria-hidden","true");
   document.getElementById("receiptDrawerBackdrop").classList.remove("open");
+  // Destacar a linha que foi aberta
+  if (_cupomLinhaAtiva) {
+    const row = document.querySelector(`tr[data-cupom="${_cupomLinhaAtiva}"]`);
+    if (row) row.classList.add("row-visited");
+  }
 }
 document.getElementById("closeReceiptDrawer")?.addEventListener("click", closeReceiptDrawer);
 document.getElementById("receiptDrawerBackdrop")?.addEventListener("click", closeReceiptDrawer);
@@ -2031,6 +2260,9 @@ async function abrirVideoCompra(cupomNum) {
 }
 
 async function abrirCupomDrawer(cupomNum) {
+  // Guardar qual linha foi aberta e remover highlight anterior
+  document.querySelectorAll("tr.row-visited").forEach(r => r.classList.remove("row-visited"));
+  _cupomLinhaAtiva = cupomNum;
   document.getElementById("receiptDrawerTitle").textContent = `Cupom ${cupomNum}`;
   document.getElementById("receiptDrawerBody").innerHTML =
     `<div style="padding:32px;text-align:center;color:var(--muted)"><i data-lucide="loader-circle" style="width:24px;animation:spin 1s linear infinite"></i></div>`;
@@ -2094,18 +2326,61 @@ async function abrirCupomDrawer(cupomNum) {
           </div>
         </div>
 
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
           <button id="btnVerVideoFromReceipt" class="primary-action" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px"
             data-cupom="${d.numero}">
             <i data-lucide="play-circle"></i> Ver vídeo da compra
           </button>
+          <button id="btnGeminiAnalisar" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;border:1px solid #4285f4;background:#f0f4ff;color:#1a56db;font-weight:600;cursor:pointer;font-size:13px;margin-top:8px"
+            data-cupom="${d.numero}">
+            <i data-lucide="sparkles" style="width:16px;height:16px"></i> Analisar com Gemini
+          </button>
+          <div id="geminiResultado" style="display:none;font-size:12px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);margin-top:6px"></div>
         </div>
       </div>`;
     lucide.createIcons();
+
+    document.getElementById("btnGeminiAnalisar")?.addEventListener("click", async () => {
+      const num = document.getElementById("btnGeminiAnalisar").dataset.cupom;
+      const btn = document.getElementById("btnGeminiAnalisar");
+      const res = document.getElementById("geminiResultado");
+      const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
+      const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-circle" style="width:16px;height:16px;animation:spin 1s linear infinite"></i> Analisando com Gemini…`;
+      lucide.createIcons();
+      res.style.display = "none";
+      try {
+        const r = await fetch(`${STREAMER}/gemini-analyze?cupom=${num}&token=${TOKEN}`, { method: "POST" });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || "Erro");
+        const sus  = data.alertas || 0;
+        const ok   = data.ok || 0;
+        const inc  = data.inconclusivos || 0;
+        const brl  = data.custo_brl ? `R$ ${data.custo_brl.toFixed(4)}` : "";
+        const ms   = data.tempo_ms ? `${(data.tempo_ms/1000).toFixed(1)}s` : "";
+        const cor  = sus > 0 ? "#c92a2a" : "#2f9e44";
+        res.style.display = "block";
+        res.innerHTML = `<strong style="color:${cor}">${sus > 0 ? "⚠ " + sus + " ALERTA(S)" : "✓ Sem divergências"}</strong>
+          &nbsp;·&nbsp; ${ok} ok &nbsp;·&nbsp; ${inc} inconclusivos<br>
+          <span style="color:var(--muted);font-size:11px">${data.itens_analisados} itens · ${ms} · custo ${brl} — resultados na Auditoria IA</span>`;
+        btn.innerHTML = `<i data-lucide="sparkles" style="width:16px;height:16px"></i> Analisado ✓`;
+        lucide.createIcons();
+      } catch(e) {
+        res.style.display = "block";
+        res.innerHTML = `<span style="color:#c92a2a">Erro: ${e.message}</span>`;
+        btn.innerHTML = `<i data-lucide="sparkles" style="width:16px;height:16px"></i> Analisar com Gemini`;
+        btn.disabled = false;
+        lucide.createIcons();
+      }
+    });
+
     document.getElementById("btnVerVideoFromReceipt")?.addEventListener("click", () => {
       const num = document.getElementById("btnVerVideoFromReceipt").dataset.cupom;
       closeReceiptDrawer();
-      // Navegar para VAR com esse cupom
+      // Marca que viemos de Cupons — ao fechar o vídeo, devolve pra cá em vez de ficar no PDV VAR
+      _voltarParaCupomsAposVideo = true;
+      // Navegar para VAR com esse cupom (necessário pra popular o player de vídeo)
       varPdvSelecionado = 1;
       document.getElementById("viewReceipts").style.display = "none";
       document.getElementById("viewPdvCards").style.display = "";
@@ -2199,24 +2474,46 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
     if (!listaFiltrada.length) { empty.style.display = ""; document.getElementById("consultarPaginacao").style.display = "none"; return; }
     empty.style.display = "none";
     const lista = listaFiltrada.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
+
+    // DVR leva ~90-120s após a consulta pra disponibilizar foto/vídeo
+    const _hojeStr = _fmtDate(new Date());
+    const _agoraMs = Date.now();
+    const _disponivel = c => {
+      if (_fmtDate(_consultarDate) !== _hojeStr) return true; // dias passados: sempre disponível
+      const ts = (c.timestamp || "").replace(" ", "T");
+      if (!ts) return true;
+      const tsMs = new Date(ts).getTime();
+      if (isNaN(tsMs)) return true;
+      return (_agoraMs - tsMs) >= 120000;
+    };
+
     lista.forEach(c => {
-      const subtitulo = [c.acao_label, c.operador].filter(Boolean).join(" · ");
+      const disp = _disponivel(c);
+      const corFaixa = disp ? "#2f9e44" : "#f59f00";
+      const tituloFaixa = disp ? "Vídeo e fotos disponíveis" : "DVR ainda processando — disponível em instantes";
       const tr = document.createElement("tr");
       tr.className = "cupons-row";
+      tr.style.borderLeft = `3px solid ${corFaixa}`;
+      tr.title = tituloFaixa;
       tr.innerHTML = `
         <td>${(c.time||"").slice(0,5)}</td>
         <td>#${c.cupom||"—"}</td>
         <td>
-          <div>${c.desc||c.cod||"—"}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${subtitulo}</div>
+          <div>${c.desc||"—"}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${c.acao_label||""}</div>
         </td>
+        <td style="font-size:12px;color:var(--muted)">${c.cod||"—"}</td>
+        <td style="font-size:12px">${c.operador||"—"}</td>
         <td>${_fmtQty(c.qty, c.unit)}</td>
         <td style="text-align:right">${_fmtBRL(c.vtotal)}</td>
-        <td style="text-align:center"><button class="icon-button btn-ver-item" title="Ver vídeo do item" style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card)"><i data-lucide="play-circle" style="width:16px;height:16px;color:var(--primary)"></i></button></td>`;
-      tr.querySelector(".btn-ver-item").addEventListener("click", e => { e.stopPropagation(); _abrirVideoConsulta(c); });
-      tr.addEventListener("click", () => _abrirVideoConsulta(c));
+        <td style="text-align:center"><button class="icon-button btn-ver-item" title="${tituloFaixa}" ${disp ? "" : "disabled"} style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--card);${disp ? "" : "opacity:.4;cursor:not-allowed"}"><i data-lucide="play-circle" style="width:16px;height:16px;color:${disp ? "var(--primary)" : "var(--muted)"}"></i></button></td>`;
+      if (disp) {
+        tr.querySelector(".btn-ver-item").addEventListener("click", e => { e.stopPropagation(); _abrirVideoConsulta(c); });
+        tr.addEventListener("click", () => _abrirVideoConsulta(c));
+      }
       tbody.appendChild(tr);
     });
+    lucide.createIcons();
     _renderPaginacao("consultarPaginacaoInfo","consultarPaginacaoBtns","consultarPaginacao", pagina, listaFiltrada.length, p => _renderConsultar(p));
   }
 
@@ -2259,7 +2556,7 @@ document.getElementById("btnImprimirCupom")?.addEventListener("click", () => {
     const clipUrl = `${STREAMER}/clip?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&token=${TOKEN}`;
 
     // Preencher header do varDrawer
-    document.getElementById("varResultModalBreadcrumb").textContent = `PDV 01 · ${c.cupom ? "Cupom #"+c.cupom : (c.time||"").slice(0,8)}`;
+    document.getElementById("varResultModalBreadcrumb").textContent = `PDV ${String(varPdvSelecionado||1).padStart(2,"0")} · ${c.cupom ? "Cupom #"+c.cupom : (c.time||"").slice(0,8)}`;
     document.getElementById("varResultModalTitle").textContent = c.desc || c.cod || "Item consultado";
 
     // Ocultar tabs do cupom
@@ -2441,13 +2738,16 @@ function renderAlertas2() {
   const table2 = document.getElementById("alertsTable2");
   if (!table2) return;
 
-  // Atualizar badges
-  document.getElementById("countAll2").textContent = alerts.length;
-  document.getElementById("countCritical2").textContent = alerts.filter(a => a.severity === "critical").length;
-  document.getElementById("countReview2").textContent = alerts.filter(a => a.state !== "resolved").length;
-  document.getElementById("countResolved2").textContent = alerts.filter(a => a.state === "resolved").length;
+  // Alertas mostra só divergências reais — itens conferidos (severity "ok") ficam na Auditoria IA
+  const alertasReais = alerts.filter(a => a.severity !== "ok");
 
-  const filtrados = alerts.filter(a => {
+  // Atualizar badges
+  document.getElementById("countAll2").textContent = alertasReais.length;
+  document.getElementById("countCritical2").textContent = alertasReais.filter(a => a.severity === "critical").length;
+  document.getElementById("countReview2").textContent = alertasReais.filter(a => a.state !== "resolved").length;
+  document.getElementById("countResolved2").textContent = alertasReais.filter(a => a.state === "resolved").length;
+
+  const filtrados = alertasReais.filter(a => {
     const filterMatch = activeFilter2 === "all"
       || (activeFilter2 === "critical" && a.severity === "critical")
       || (activeFilter2 === "review" && a.state !== "resolved")
@@ -2762,78 +3062,65 @@ function iniciarViewAuditIa() {
 }
 
 async function carregarAuditIa() {
-  const STREAMER = (window.APP_CONFIG || {}).STREAMER_URL || "";
-  const TOKEN    = (window.APP_CONFIG || {}).STREAMER_TOKEN || "";
-  if (!STREAMER || !TOKEN) return;
-  const params = new URLSearchParams({ date: selectedDate, limit: "800", token: TOKEN });
-  if (auditIaResult) params.set("result", auditIaResult);
+  // Auditoria IA mostra TODOS os itens analisados (Gemini) — aprovados e suspeitos
+  const params = new URLSearchParams({ loja: LOJA, filter: "all", data: selectedDate });
   try {
-    const r = await fetch(`${STREAMER}/audit-decisions?${params}`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    auditIaItems = data.items || [];
-    renderAuditIa(data.counts || {});
+    const resp = await apiFetch(`/api/v1/alerts?${params}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    let items = await resp.json();
+    // Resultado vindo do backend: "result" já traduzido (Confere, Categoria divergente, etc)
+    if (auditIaResult === "OK") items = items.filter(i => i.severity === "ok");
+    else if (auditIaResult === "SUSPEITO") items = items.filter(i => i.severity !== "ok");
+    auditIaItems = items;
+    renderAuditIa();
   } catch (e) {
     auditIaItems = [];
-    renderAuditIa({});
+    renderAuditIa();
   }
 }
 
-function renderAuditIa(counts = null) {
+function renderAuditIa() {
   const tbody = document.getElementById("auditIaTable");
   const resumo = document.getElementById("auditIaResumo");
   if (!tbody) return;
   const q = (document.getElementById("auditIaSearchInput")?.value || "").trim().toLowerCase();
   const rows = auditIaItems.filter(item => {
     if (!q) return true;
-    return [
-      item.produto, item.cupom, item.categoria_pdv, item.clip_categoria,
-      item.motivo, item.descricao_ia, item.resultado, item.risco,
-      item.compatibilidade_decisao,
-    ].some(v => String(v || "").toLowerCase().includes(q));
+    return [item.product, item.receipt, item.analysis, item.result, item.note]
+      .some(v => String(v || "").toLowerCase().includes(q));
   });
 
-  const localCounts = counts || auditIaItems.reduce((acc, item) => {
-    const key = String(item.resultado || "OUTROS").toUpperCase();
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
+  const ok = auditIaItems.filter(i => i.severity === "ok").length;
+  const suspeito = auditIaItems.filter(i => i.severity !== "ok").length;
   if (resumo) {
-    const ok = localCounts.OK || 0;
-    const suspeito = localCounts.SUSPEITO || 0;
-    const semDvr = localCounts.SEM_DVR || 0;
-    resumo.innerHTML = `<strong>${rows.length}</strong><small>${ok} aprovados · ${suspeito} suspeitos IA · ${semDvr} sem DVR</small>`;
+    resumo.innerHTML = `<strong>${rows.length}</strong><small>${ok} aprovados · ${suspeito} suspeitos IA</small>`;
   }
 
   tbody.innerHTML = rows.length ? rows.map(item => {
-    const resultado = String(item.resultado || "-").toUpperCase();
-    const badgeClass = resultado === "OK" ? "status-ok" : (resultado === "SUSPEITO" ? "status-alert" : "status-review");
-    const clip = item.clip_categoria
-      ? `${escapeText(item.clip_categoria)} ${(Number(item.clip_confianca || 0) * 100).toFixed(0)}%`
-      : "-";
-    const compat = auditIaCompatibilityDetails(item);
-    const physical = auditIaPhysicalCell(item);
-    const evidence = auditIaEvidenceButtons(item);
+    const sevLabel = item.severity === "critical" ? "Suspeito" : (item.severity === "warning" ? "Atenção" : "Aprovado");
+    const subtitle = (item.analysis || "").replace(/^(PASSO \d:\s*)/i, "").slice(0, 70);
     return `
-      <tr>
-        <td><span class="${badgeClass}">${escapeText(resultado)}</span></td>
-        <td>${compat}</td>
-        <td>${physical}</td>
-        <td>${escapeText(item.time || (item.created_at || "").slice(11, 19))}</td>
-        <td>${escapeText(item.cupom || "-")}</td>
-        <td>
-          <strong>${escapeText(item.produto || "-")}</strong>
-          <small>${escapeText(item.codigo || "")}</small>
-        </td>
-        <td>${escapeText(item.categoria_pdv || "-")}</td>
-        <td>${clip}</td>
-        <td>${escapeText(auditIaReasonSummary(item))}</td>
-        <td>${evidence}</td>
-        <td>${item.alerta_humano ? "Sim" : "Não"}</td>
+      <tr class="cupons-row" data-id="${item.id}">
+        <td><span class="severity ${item.severity}"><i></i>${escapeText(sevLabel)}</span></td>
+        <td>${escapeText(item.time || "-")}</td>
+        <td class="receipt-cell"><strong>${escapeText(item.pdv || "-")}</strong><span>Cupom ${escapeText(item.receipt || "-")}</span></td>
+        <td><div class="event-cell"><img class="mini-cctv" src="${item.imageUrl || 'assets/frame-register.svg'}" loading="lazy" onerror="this.src='assets/frame-register.svg';this.onerror=null" alt=""><div><strong>${escapeText(item.event || "-")}</strong><span>${escapeText(subtitle)}</span></div></div></td>
+        <td class="product-cell"><strong>${escapeText(item.product || "-")}</strong><span>${escapeText(item.value || "-")}</span></td>
+        <td><div class="confidence"><span>${item.confidence || 0}%</span><i class="confidence-meter"><i style="width:${item.confidence || 0}%"></i></i></div></td>
+        <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
       </tr>`;
-  }).join("") : `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
-  tbody.querySelectorAll("[data-audit-image]").forEach(btn => {
-    btn.addEventListener("click", () => window.open(btn.dataset.auditImage, "_blank", "noopener"));
+  }).join("") : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
+  tbody.querySelectorAll("tr[data-id]").forEach(row => {
+    row.addEventListener("click", event => {
+      const item = auditIaItems.find(i => String(i.id) === row.dataset.id);
+      if (!item) return;
+      if (event.target.closest("[data-action='video']")) {
+        openDrawer(item);
+        setTimeout(() => document.getElementById("videoButton").click(), 100);
+      } else {
+        openDrawer(item);
+      }
+    });
   });
   lucide.createIcons();
 }
@@ -2908,7 +3195,7 @@ function iniciarApp() {
   atualizarRotuloData();
   carregarAlertas();
   carregarHealth();
-  carregarVendas();
+  carregarVendas(); carregarGeminiCredito();
 
   setInterval(() => {
     if (isHoje(selectedDate)) carregarAlertas();
@@ -2919,7 +3206,7 @@ function iniciarApp() {
   carregarItensCaixa();
   setInterval(carregarItensCaixa, 30000);
   setInterval(() => {
-    if (isHoje(selectedDate)) carregarVendas();
+    if (isHoje(selectedDate)) carregarVendas(); carregarGeminiCredito();
   }, REFRESH_INTERVAL_MS);
 }
 
@@ -3237,6 +3524,161 @@ document.querySelector(".notification-button")?.addEventListener("click", () => 
   const alertsBtn = document.querySelector(".nav-item[data-view='alerts']");
   if (alertsBtn) alertsBtn.click();
 });
+
+// ── Configurações ─────────────────────────────────────────────────────────────
+let _cfgPdv = null;
+let _cfgPdvLista = [];
+
+async function _cfgCarregarPdvs() {
+  if (_cfgPdvLista.length) return;
+  try {
+    const r = await apiFetch(`/api/v1/health?loja=${LOJA}`);
+    if (r.ok) {
+      const d = await r.json();
+      _cfgPdvLista = [...new Set(d.map(h => h.pdv))].sort();
+    }
+  } catch {}
+  if (!_cfgPdvLista.length) _cfgPdvLista = ["001"];
+  if (!_cfgPdv) _cfgPdv = _cfgPdvLista[0];
+}
+
+function _cfgRenderTabs(containerId, onSelect) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (_cfgPdvLista.length <= 1) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="config-pdv-selector">${
+    _cfgPdvLista.map(p => `<button class="config-pdv-tab${p === _cfgPdv ? " active" : ""}" data-pdv="${p}">PDV ${String(p).padStart(2,"0")}</button>`).join("")
+  }</div>`;
+  el.querySelectorAll(".config-pdv-tab").forEach(btn => {
+    btn.addEventListener("click", () => { _cfgPdv = btn.dataset.pdv; onSelect(); });
+  });
+}
+
+function _cfgSet(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.type === "checkbox") el.checked = (val !== false && val !== 0 && val !== null);
+  else el.value = (val !== undefined && val !== null) ? val : "";
+}
+
+// ── Config Loja & PDVs ────────────────────────────────────────────────────────
+async function iniciarViewConfigLoja() {
+  const r = await apiFetch(`/api/v1/config?loja=${LOJA}`);
+  const cfg = r.ok ? await r.json() : {};
+  _cfgSet("cfgLojaNome", cfg.loja_nome || LOJA_NOME);
+  _cfgSet("cfgLojaAmbiente", cfg.ambiente || AMBIENTE);
+  _cfgSet("cfgLojaOperadores", (cfg.operadores || []).join(", "));
+  lucide.createIcons();
+}
+
+async function salvarConfigLoja() {
+  const operadoresRaw = document.getElementById("cfgLojaOperadores").value;
+  const operadores = operadoresRaw.split(",").map(s => s.trim()).filter(Boolean);
+  const dados = {
+    loja_nome: document.getElementById("cfgLojaNome").value.trim() || undefined,
+    ambiente: document.getElementById("cfgLojaAmbiente").value,
+    operadores,
+  };
+  const r = await apiFetch(`/api/v1/config?loja=${LOJA}`, { method: "PUT", body: JSON.stringify(dados) });
+  r.ok ? showToast("Configurações da loja salvas.") : showToast("Erro ao salvar.", "error");
+}
+
+// ── Config Auditoria IA ───────────────────────────────────────────────────────
+async function iniciarViewConfigAuditoria() {
+  await _cfgCarregarPdvs();
+  _cfgRenderTabs("cfgAuditTabs", iniciarViewConfigAuditoria);
+  const r = await apiFetch(`/api/v1/config/${_cfgPdv}?loja=${LOJA}`);
+  const cfg = r.ok ? await r.json() : {};
+  _cfgSet("cfgAudEnabled", cfg.auditoria_enabled !== false);
+  _cfgSet("cfgAudModoAuto", (cfg.auditoria_modo || "auto") === "auto");
+  _cfgSet("cfgAudValorMin", cfg.auditoria_valor_minimo ?? "");
+  _cfgSet("cfgAudMaxHora", cfg.auditoria_max_por_hora ?? "");
+  _cfgSet("cfgAudProvedor", cfg.auditoria_provedor || "groq");
+  _cfgSet("cfgAudApiKey", cfg.auditoria_api_key || "");
+  _cfgSet("cfgAudModelo", cfg.auditoria_modelo || "");
+  _cfgSet("cfgAudConfianca", cfg.auditoria_confianca_minima ?? "");
+  _cfgSet("cfgAudPrompt", cfg.auditoria_prompt || "");
+  lucide.createIcons();
+}
+
+async function salvarConfigAuditoria() {
+  const dados = {
+    auditoria_enabled: document.getElementById("cfgAudEnabled").checked,
+    auditoria_modo: document.getElementById("cfgAudModoAuto").checked ? "auto" : "manual",
+    auditoria_provedor: document.getElementById("cfgAudProvedor").value,
+    auditoria_modelo: document.getElementById("cfgAudModelo").value.trim() || undefined,
+    auditoria_prompt: document.getElementById("cfgAudPrompt").value.trim() || undefined,
+  };
+  const apiKey = document.getElementById("cfgAudApiKey").value;
+  if (apiKey && apiKey !== "***") dados.auditoria_api_key = apiKey;
+  const conf = parseInt(document.getElementById("cfgAudConfianca").value);
+  if (!isNaN(conf)) dados.auditoria_confianca_minima = conf;
+  const valMin = parseFloat(document.getElementById("cfgAudValorMin").value);
+  if (!isNaN(valMin)) dados.auditoria_valor_minimo = valMin;
+  const maxH = parseInt(document.getElementById("cfgAudMaxHora").value);
+  if (!isNaN(maxH)) dados.auditoria_max_por_hora = maxH;
+  Object.keys(dados).forEach(k => dados[k] === undefined && delete dados[k]);
+  const r = await apiFetch(`/api/v1/config/${_cfgPdv}?loja=${LOJA}`, { method: "PUT", body: JSON.stringify(dados) });
+  r.ok ? showToast("Configurações de auditoria salvas.") : showToast("Erro ao salvar.", "error");
+}
+
+// ── Config Câmera ─────────────────────────────────────────────────────────────
+async function iniciarViewConfigCamera() {
+  await _cfgCarregarPdvs();
+  _cfgRenderTabs("cfgCamTabs", iniciarViewConfigCamera);
+  const r = await apiFetch(`/api/v1/config/${_cfgPdv}?loja=${LOJA}`);
+  const cfg = r.ok ? await r.json() : {};
+  _cfgSet("cfgCamHost", cfg.camera_host || "");
+  _cfgSet("cfgCamUser", cfg.camera_user || "");
+  _cfgSet("cfgCamPass", cfg.camera_pass || "");
+  _cfgSet("cfgCamChannel", cfg.camera_channel ?? "");
+  _cfgSet("cfgCamPhotoDelay", cfg.camera_photo_delay ?? "");
+  _cfgSet("cfgCamClipDur", cfg.camera_clip_duration ?? "");
+  lucide.createIcons();
+}
+
+async function salvarConfigCamera() {
+  const dados = {
+    camera_host: document.getElementById("cfgCamHost").value.trim() || undefined,
+    camera_user: document.getElementById("cfgCamUser").value.trim() || undefined,
+    camera_channel: parseInt(document.getElementById("cfgCamChannel").value) || undefined,
+    camera_photo_delay: parseInt(document.getElementById("cfgCamPhotoDelay").value),
+    camera_clip_duration: parseInt(document.getElementById("cfgCamClipDur").value) || undefined,
+  };
+  const pass = document.getElementById("cfgCamPass").value;
+  if (pass && pass !== "***") dados.camera_pass = pass;
+  Object.keys(dados).forEach(k => (dados[k] === undefined || isNaN(dados[k])) && delete dados[k]);
+  const r = await apiFetch(`/api/v1/config/${_cfgPdv}?loja=${LOJA}`, { method: "PUT", body: JSON.stringify(dados) });
+  r.ok ? showToast("Configurações de câmera salvas.") : showToast("Erro ao salvar.", "error");
+}
+
+// ── Config Notificações ───────────────────────────────────────────────────────
+async function iniciarViewConfigNotificacoes() {
+  const r = await apiFetch(`/api/v1/config?loja=${LOJA}`);
+  const cfg = r.ok ? await r.json() : {};
+  _cfgSet("cfgNotiToken", cfg.telegram_token || "");
+  _cfgSet("cfgNotiChatId", cfg.telegram_chat_id || "");
+  _cfgSet("cfgNotiEnabled", cfg.telegram_alertas !== false);
+  _cfgSet("cfgNotiSev", cfg.telegram_severidade_minima || "warning");
+  _cfgSet("cfgNotiSilStart", cfg.telegram_silencioso_inicio || "");
+  _cfgSet("cfgNotiSilEnd", cfg.telegram_silencioso_fim || "");
+  lucide.createIcons();
+}
+
+async function salvarConfigNotificacoes() {
+  const dados = {
+    telegram_chat_id: document.getElementById("cfgNotiChatId").value.trim() || undefined,
+    telegram_alertas: document.getElementById("cfgNotiEnabled").checked,
+    telegram_severidade_minima: document.getElementById("cfgNotiSev").value,
+    telegram_silencioso_inicio: document.getElementById("cfgNotiSilStart").value || undefined,
+    telegram_silencioso_fim: document.getElementById("cfgNotiSilEnd").value || undefined,
+  };
+  const token = document.getElementById("cfgNotiToken").value;
+  if (token && token !== "***") dados.telegram_token = token;
+  Object.keys(dados).forEach(k => dados[k] === undefined && delete dados[k]);
+  const r = await apiFetch(`/api/v1/config?loja=${LOJA}`, { method: "PUT", body: JSON.stringify(dados) });
+  r.ok ? showToast("Configurações de notificações salvas.") : showToast("Erro ao salvar.", "error");
+}
 
 // iOS Safari restaura scroll position ao reabrir aba — forçar topo em múltiplos momentos
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=36">
+  <link rel="stylesheet" href="styles.css?v=37">
   <script>if ('scrollRestoration' in history) history.scrollRestoration = 'manual';</script>
   <style>
     .video-simulation #eventVideo {
@@ -76,7 +76,7 @@
               <i data-lucide="receipt-text"></i><span>Cupons</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="consultar">
-              <i data-lucide="search"></i><span>Consultar</span>
+              <i data-lucide="search"></i><span>Consultas</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="alerts">
               <i data-lucide="bell-ring"></i><span>Alertas</span><b id="navAlertsBadge">0</b>
@@ -99,8 +99,20 @@
             <i data-lucide="chevron-right" class="nav-chevron"></i>
           </button>
           <div class="nav-sub" id="navConfigSub">
-            <button class="nav-item nav-sub-item" data-view="users" id="navUsuarios" style="display:none">
-              <i data-lucide="users"></i><span>Usuários</span>
+            <button class="nav-item nav-sub-item" data-view="config-loja">
+              <i data-lucide="store"></i><span>Loja &amp; PDVs</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="config-auditoria">
+              <i data-lucide="cpu"></i><span>Auditoria IA</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="config-camera">
+              <i data-lucide="camera"></i><span>Câmera (DVR)</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="config-notificacoes">
+              <i data-lucide="bell"></i><span>Notificações</span>
+            </button>
+            <button class="nav-item nav-sub-item" data-view="config-usuarios" id="navUsuarios" style="display:none">
+              <i data-lucide="users"></i><span>Usuários &amp; Acesso</span>
             </button>
             <button class="nav-item nav-sub-item" data-view="lojas" id="navLojas" style="display:none">
               <i data-lucide="store"></i><span>Lojas</span>
@@ -112,7 +124,7 @@
         </button>
         <div class="environment">
           <span class="status-dot online"></span>
-          Produção
+          <span id="ambienteLabel">Produção</span>
         </div>
       </div>
     </aside>
@@ -177,6 +189,10 @@
           <article>
             <div class="metric-icon cyan"><i data-lucide="receipt"></i></div>
             <div><span>Cupons fechados</span><strong id="metricCuponsFechados">0</strong></div>
+          </article>
+          <article>
+            <div class="metric-icon purple"><i data-lucide="sparkles"></i></div>
+            <div><span>Crédito Gemini restante</span><strong id="metricGeminiCredito">—</strong><small id="metricGeminiDetalhe" style="display:block;color:var(--muted);font-size:11px;margin-top:2px">—</small></div>
           </article>
         </section>
 
@@ -303,37 +319,10 @@
             </div>
             <div class="health-header"><span>PDV</span><span>Ponte</span><span>iMHDX</span><span>Auditoria</span></div>
             <div id="healthGrid" class="health-grid"></div>
-            <button class="health-link">Abrir monitor técnico <i data-lucide="arrow-up-right"></i></button>
+            <button class="health-link" onclick="abrirMonitorTecnico()">Abrir monitor técnico <i data-lucide="arrow-up-right"></i></button>
           </aside>
         </section>
 
-        <section class="analytics-grid">
-          <article class="chart-panel">
-            <div class="section-title">
-              <div><h2>Alertas por hora</h2><p>Eventos gerados e confirmados hoje</p></div>
-              <div class="legend"><span><i class="legend-dot generated"></i>Gerados</span><span><i class="legend-dot confirmed"></i>Confirmados</span></div>
-            </div>
-            <svg class="line-chart" viewBox="0 0 700 190" role="img" aria-label="Gráfico de alertas por hora">
-              <g class="grid-lines">
-                <line x1="48" y1="22" x2="680" y2="22"/><line x1="48" y1="72" x2="680" y2="72"/>
-                <line x1="48" y1="122" x2="680" y2="122"/><line x1="48" y1="172" x2="680" y2="172"/>
-              </g>
-              <polyline class="line generated-line" points="48,145 120,132 192,151 264,108 336,118 408,63 480,91 552,42 624,70 680,51"/>
-              <polyline class="line confirmed-line" points="48,162 120,156 192,164 264,143 336,150 408,121 480,139 552,104 624,128 680,116"/>
-              <g class="axis-labels">
-                <text x="48" y="188">08h</text><text x="190" y="188">10h</text><text x="332" y="188">12h</text>
-                <text x="476" y="188">14h</text><text x="620" y="188">16h</text>
-              </g>
-            </svg>
-          </article>
-
-          <article class="chart-panel occurrence-types">
-            <div class="section-title"><div><h2>Tipos de ocorrência</h2><p>Distribuição dos alertas reais</p></div></div>
-            <div class="bar-list" id="occurrenceTypesList">
-              <div><span>Sem dados ainda</span><b>-</b><i><em style="width:0%"></em></i></div>
-            </div>
-          </article>
-        </section>
       </section>
 
       <!-- View: Usuários -->
@@ -455,20 +444,16 @@
             <div id="auditIaResumo" class="pipeline-history" style="margin-left:0"></div>
           </div>
           <div class="cupons-table-wrap">
-            <table class="cupons-table audit-table">
+            <table class="alerts-table cupons-table" style="min-width:700px">
               <thead>
                 <tr>
                   <th>Resultado</th>
-                  <th>Compat.</th>
-                  <th>Físico</th>
                   <th>Horário</th>
-                  <th>Cupom</th>
-                  <th>Produto</th>
-                  <th>Categoria PDV</th>
-                  <th>CLIP</th>
-                  <th>Motivo</th>
-                  <th>Evidência</th>
-                  <th>Alerta</th>
+                  <th>PDV / Cupom</th>
+                  <th>Análise Gemini</th>
+                  <th>Produto registrado</th>
+                  <th>Confiança</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="auditIaTable"></tbody>
@@ -496,7 +481,7 @@
         <div id="pdvVarSearch" style="display:none">
           <div class="page-heading">
             <div>
-              <p class="eyebrow" id="varBreadcrumb">PDV 01 · Loja 106</p>
+              <p class="eyebrow" id="varBreadcrumb">—</p>
               <h1>Consulta de cupom</h1>
               <p>Digite o número do cupom para revisar os eventos registrados.</p>
             </div>
@@ -565,7 +550,7 @@
         <div class="page-heading">
           <div>
             <p class="eyebrow">Operação</p>
-            <h1>Consultar PDV 001</h1>
+            <h1>Consultas</h1>
             <p>Itens consultados e selecionados manualmente no caixa.</p>
           </div>
         </div>
@@ -606,18 +591,22 @@
           <div id="consultarTabelaConsultas" class="cupons-table-wrap">
             <table class="cupons-table">
               <colgroup>
+                <col style="width:7%">
                 <col style="width:8%">
-                <col style="width:10%">
-                <col style="width:42%">
-                <col style="width:10%">
+                <col style="width:26%">
+                <col style="width:12%">
                 <col style="width:14%">
-                <col style="width:16%">
+                <col style="width:8%">
+                <col style="width:11%">
+                <col style="width:11%">
               </colgroup>
               <thead>
                 <tr>
                   <th>Horário</th>
                   <th>Cupom</th>
                   <th>Produto consultado</th>
+                  <th>Código</th>
+                  <th>Operador</th>
                   <th>Qtd.</th>
                   <th style="text-align:right">Valor</th>
                   <th style="text-align:center">Ação</th>
@@ -637,6 +626,59 @@
       </section>
 
       <!-- Modal vídeo de consulta -->
+      <!-- ── Monitor Técnico ── -->
+      <div id="monitorTecnicoModal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(3px)" onclick="if(event.target===this) fecharMonitorTecnico()">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border-radius:14px;width:min(580px,95vw);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:36px;height:36px;border-radius:8px;background:#eef6f2;color:var(--primary);display:flex;align-items:center;justify-content:center"><i data-lucide="activity" style="width:17px;height:17px"></i></div>
+              <div>
+                <div style="font-weight:700;font-size:15px">Monitor Técnico</div>
+                <div id="monitorPdvLabel" style="font-size:11px;color:var(--muted)">PDV 001 · Loja 106</div>
+              </div>
+            </div>
+            <button onclick="fecharMonitorTecnico()" style="background:none;border:none;cursor:pointer;padding:6px;color:var(--muted)"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+          </div>
+          <div id="monitorTecnicoBody" style="padding:20px;display:flex;flex-direction:column;gap:16px">
+            <div style="text-align:center;padding:32px;color:var(--muted)">
+              <i data-lucide="loader-circle" style="width:28px;height:28px;animation:spin 1s linear infinite"></i>
+              <p style="margin-top:8px;font-size:13px">Coletando diagnóstico…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="liveCameraModal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)" onclick="if(event.target===this) fecharCameraAoVivo()">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:16px;width:min(860px,96vw);max-height:94vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)">
+
+          <!-- Imagem da câmera ocupa todo o espaço -->
+          <div style="position:relative;background:#000;line-height:0">
+            <img id="liveCameraImg" style="width:100%;display:block;max-height:90vh;object-fit:cover" alt="Câmera ao vivo">
+
+            <!-- Overlay topo: gradiente + info AO VIVO -->
+            <div style="position:absolute;top:0;left:0;right:0;padding:18px 18px 48px;background:linear-gradient(to bottom,rgba(0,0,0,.7) 0%,transparent 100%);display:flex;align-items:flex-start;justify-content:space-between">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e03131;animation:liveBlink 1.2s infinite;flex-shrink:0"></span>
+                  <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:.08em;text-transform:uppercase">Ao vivo</span>
+                </div>
+                <div style="font-size:17px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.5)" id="liveCameraLabel">PDV 01</div>
+              </div>
+              <button onclick="fecharCameraAoVivo()" style="background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.15);border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;backdrop-filter:blur(4px)"><i data-lucide="x" style="width:16px;height:16px"></i></button>
+            </div>
+
+            <!-- Loading state -->
+            <div id="liveCameraLoading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9aa0a6;background:#000;min-height:380px">
+              <i data-lucide="loader-circle" style="width:36px;height:36px;animation:spin 1s linear infinite"></i>
+              <p style="margin-top:12px;font-size:13px">Conectando à câmera…</p>
+              <p style="margin-top:4px;font-size:11px;color:#555">pode levar até 20s na primeira vez</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <style>@keyframes liveBlink { 0%,100%{opacity:1} 50%{opacity:.2} }</style>
+
       <div id="consultaVideoModal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.55);display:none">
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border-radius:12px;width:min(680px,96vw);max-height:90vh;overflow-y:auto;padding:24px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -816,6 +858,223 @@
         </div>
       </section>
 
+      <!-- ── View: Config Loja & PDVs ─────────────────────────────────────── -->
+      <section class="workspace" id="viewConfigLoja" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>Loja &amp; PDVs</h1>
+            <p>Identidade da loja e operadores cadastrados.</p>
+          </div>
+        </div>
+        <div class="config-page">
+          <div class="config-section">
+            <h3>Identidade</h3>
+            <div class="config-field">
+              <label>Nome da loja</label>
+              <input id="cfgLojaNome" type="text" maxlength="120" placeholder="Ex: Supermercado Centro">
+            </div>
+            <div class="config-field">
+              <label>Ambiente</label>
+              <select id="cfgLojaAmbiente">
+                <option value="Produção">Produção</option>
+                <option value="Teste">Teste</option>
+                <option value="Homologação">Homologação</option>
+              </select>
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Operadores do Caixa</h3>
+            <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Nomes como aparecem no spy file. Separe por vírgula.</p>
+            <div class="config-field">
+              <label>Operadores</label>
+              <textarea id="cfgLojaOperadores" rows="3" placeholder="JOAO SILVA, MARIA COSTA, PEDRO ALVES"></textarea>
+            </div>
+          </div>
+          <div class="config-save-bar">
+            <button onclick="salvarConfigLoja()"><i data-lucide="save" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"></i>Salvar</button>
+            <span class="config-hint">Alterações entram em vigor imediatamente no dashboard.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── View: Config Auditoria IA ─────────────────────────────────────── -->
+      <section class="workspace" id="viewConfigAuditoria" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>Auditoria IA</h1>
+            <p>Pipeline de análise de imagem por inteligência artificial.</p>
+          </div>
+        </div>
+        <div class="config-page">
+          <div id="cfgAuditTabs"></div>
+          <div class="config-section">
+            <h3>Pipeline</h3>
+            <div class="config-toggle-row">
+              <div><span>Auditoria ativada</span><small>Liga/desliga toda a análise por IA</small></div>
+              <label class="cfg-switch"><input type="checkbox" id="cfgAudEnabled"><span class="cfg-switch-track"></span></label>
+            </div>
+            <div class="config-toggle-row">
+              <div><span>Modo automático</span><small>Analisa todos os cupons automaticamente</small></div>
+              <label class="cfg-switch"><input type="checkbox" id="cfgAudModoAuto"><span class="cfg-switch-track"></span></label>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap">
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Valor mínimo do item (R$)</label>
+                <input id="cfgAudValorMin" type="number" min="0" step="0.01" placeholder="20.00">
+              </div>
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Máx análises por hora</label>
+                <input id="cfgAudMaxHora" type="number" min="1" max="10000" placeholder="60">
+              </div>
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Provedor de IA</h3>
+            <div class="config-field">
+              <label>Provedor</label>
+              <select id="cfgAudProvedor">
+                <option value="groq">Groq</option>
+                <option value="gemini">Google Gemini</option>
+              </select>
+            </div>
+            <div class="config-field">
+              <label>API Key</label>
+              <input id="cfgAudApiKey" type="password" maxlength="256" placeholder="••••••••••••••••••••••••">
+            </div>
+            <div class="config-field">
+              <label>Modelo</label>
+              <input id="cfgAudModelo" type="text" maxlength="128" placeholder="meta-llama/llama-4-scout-17b-16e-instruct">
+            </div>
+            <div class="config-field">
+              <label>Confiança mínima para alertar (%)</label>
+              <input id="cfgAudConfianca" type="number" min="0" max="100" placeholder="70">
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Prompt personalizado</h3>
+            <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Deixe em branco para usar o prompt padrão do sistema.</p>
+            <div class="config-field">
+              <textarea id="cfgAudPrompt" rows="6" placeholder="Analise a imagem e identifique o produto registrado no cupom fiscal..."></textarea>
+            </div>
+          </div>
+          <div class="config-save-bar">
+            <button onclick="salvarConfigAuditoria()"><i data-lucide="save" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"></i>Salvar</button>
+            <span class="config-hint">Aplicado ao PDV em até 2 minutos pelo sync.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── View: Config Câmera DVR ───────────────────────────────────────── -->
+      <section class="workspace" id="viewConfigCamera" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>Câmera (DVR)</h1>
+            <p>Conexão com o gravador digital e parâmetros de captura.</p>
+          </div>
+        </div>
+        <div class="config-page">
+          <div id="cfgCamTabs"></div>
+          <div class="config-section">
+            <h3>Conexão DVR</h3>
+            <div class="config-field">
+              <label>Host / IP do iMHDX</label>
+              <input id="cfgCamHost" type="text" maxlength="256" placeholder="192.168.24.227">
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Usuário</label>
+                <input id="cfgCamUser" type="text" maxlength="64" placeholder="admin">
+              </div>
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Senha</label>
+                <input id="cfgCamPass" type="password" maxlength="256" placeholder="••••••••">
+              </div>
+            </div>
+            <div class="config-field">
+              <label>Canal de vídeo</label>
+              <input id="cfgCamChannel" type="number" min="1" max="32" placeholder="1">
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Captura</h3>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Delay da foto após bipe (seg)</label>
+                <input id="cfgCamPhotoDelay" type="number" min="0" max="300" placeholder="6">
+              </div>
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Duração do clipe de vídeo (seg)</label>
+                <input id="cfgCamClipDur" type="number" min="5" max="600" placeholder="30">
+              </div>
+            </div>
+          </div>
+          <div class="config-save-bar">
+            <button onclick="salvarConfigCamera()"><i data-lucide="save" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"></i>Salvar</button>
+            <span class="config-hint">Aplicado ao PDV em até 2 minutos pelo sync.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── View: Config Notificações ─────────────────────────────────────── -->
+      <section class="workspace" id="viewConfigNotificacoes" style="display:none">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Configurações</p>
+            <h1>Notificações</h1>
+            <p>Bot Telegram e preferências de envio de alertas.</p>
+          </div>
+        </div>
+        <div class="config-page">
+          <div class="config-section">
+            <h3>Bot Telegram</h3>
+            <div class="config-field">
+              <label>Token do bot</label>
+              <input id="cfgNotiToken" type="password" maxlength="256" placeholder="123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            </div>
+            <div class="config-field">
+              <label>Chat ID</label>
+              <input id="cfgNotiChatId" type="text" maxlength="64" placeholder="-100123456789">
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Filtros de Alerta</h3>
+            <div class="config-toggle-row">
+              <div><span>Alertas ativados</span><small>Envia mensagens no Telegram para novos alertas</small></div>
+              <label class="cfg-switch"><input type="checkbox" id="cfgNotiEnabled"><span class="cfg-switch-track"></span></label>
+            </div>
+            <div class="config-field" style="margin-top:14px">
+              <label>Severidade mínima para notificar</label>
+              <select id="cfgNotiSev">
+                <option value="critical">Somente Crítico</option>
+                <option value="warning">Atenção e Crítico</option>
+                <option value="ok">Todos</option>
+              </select>
+            </div>
+          </div>
+          <div class="config-section">
+            <h3>Horário Silencioso</h3>
+            <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Nenhuma notificação será enviada neste intervalo.</p>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div class="config-field" style="flex:1;min-width:120px">
+                <label>Das</label>
+                <input id="cfgNotiSilStart" type="time">
+              </div>
+              <div class="config-field" style="flex:1;min-width:120px">
+                <label>Até</label>
+                <input id="cfgNotiSilEnd" type="time">
+              </div>
+            </div>
+          </div>
+          <div class="config-save-bar">
+            <button onclick="salvarConfigNotificacoes()"><i data-lucide="save" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"></i>Salvar</button>
+            <span class="config-hint">Alterações entram em vigor imediatamente.</span>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -954,25 +1213,17 @@
             <span id="resultBadge" class="result-badge danger">Divergência</span>
           </div>
           <div class="ia-diagnostico-body">
-            <div class="ia-linha">
-              <span class="ia-label">Produto registrado</span>
-              <span id="iaProdutoRegistrado">—</span>
+            <div class="ia-linha-stack">
+              <span class="ia-label">Produto registrado no cupom</span>
+              <span id="iaProdutoRegistrado" class="ia-valor">—</span>
             </div>
-            <div class="ia-linha">
-              <span class="ia-label">Categoria esperada</span>
-              <span id="iaCategoriaEsperada">—</span>
+            <div class="ia-linha-stack">
+              <span class="ia-label">O que o Gemini viu</span>
+              <span id="iaSmolvlm" class="ia-valor">—</span>
             </div>
-            <div class="ia-linha">
-              <span class="ia-label">CLIP detectou</span>
-              <span id="iaClipDetectou">—</span>
-            </div>
-            <div class="ia-linha">
-              <span class="ia-label">SmolVLM</span>
-              <span id="iaSmolvlm">—</span>
-            </div>
-            <div class="ia-linha ia-obs" id="iaObsLinha" style="display:none">
+            <div class="ia-linha-stack ia-obs" id="iaObsLinha" style="display:none">
               <span class="ia-label">Observação</span>
-              <span id="iaObs">—</span>
+              <span id="iaObs" class="ia-valor">—</span>
             </div>
           </div>
         </div>
@@ -1000,7 +1251,7 @@
   <aside id="varDrawer" class="var-drawer" aria-hidden="true">
     <div class="drawer-header">
       <div>
-        <p class="eyebrow" id="varResultModalBreadcrumb">PDV 001 · Loja 106</p>
+        <p class="eyebrow" id="varResultModalBreadcrumb">—</p>
         <h2 id="varResultModalTitle">Cupom 221548</h2>
       </div>
       <button id="closeVarResult" class="icon-button" aria-label="Fechar"><i data-lucide="x"></i></button>
@@ -1020,7 +1271,7 @@
       <div class="video-simulation">
         <video id="eventVideo" controls playsinline webkit-playsinline preload="metadata"></video>
         <div id="videoUnavailable" class="video-unavailable" hidden>Vídeo não disponível para este evento.</div>
-        <div class="video-meta"><span id="videoMeta">PDV 01 · Cupom 221548</span></div>
+        <div class="video-meta"><span id="videoMeta">—</span></div>
       </div>
     </div>
   </div>
@@ -1030,7 +1281,7 @@
   <aside id="receiptDrawer" class="var-drawer" aria-hidden="true">
     <div class="drawer-header">
       <div>
-        <p class="eyebrow" id="receiptDrawerEyebrow">PDV 001 · Loja 106</p>
+        <p class="eyebrow" id="receiptDrawerEyebrow">—</p>
         <h2 id="receiptDrawerTitle">Cupom —</h2>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1051,6 +1302,6 @@
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=36"></script>
+  <script src="app.js?v=37"></script>
 </body>
 </html>

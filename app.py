@@ -2,13 +2,15 @@ import json
 import os
 import re
 import secrets
-import sqlite3
+import psycopg2
+import psycopg2.extras
+import psycopg2.pool
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,8 +106,8 @@ def _validar_datetime(valor: str, campo: str = "datetime") -> str:
         raise HTTPException(status_code=422, detail=f"{campo} invalido. Use AAAA-MM-DD HH:MM:SS")
     return valor
 
-DB_PATH = Path(os.environ.get("DB_PATH", "/data/easy-auditoria.db"))
-SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://easy:easy@localhost:5432/easy_auditoria")
+SCHEMA_PATH = Path(__file__).resolve().parent / "schema_pg.sql"
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", "/data/videos"))
 PURCHASE_VIDEOS_DIR = Path(os.environ.get("PURCHASE_VIDEOS_DIR", "/data/purchase_videos"))
@@ -150,18 +152,41 @@ def status_de_resultado(resultado: Optional[str]) -> str:
     return "pending"
 
 
+_PG_POOL: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+
+
+class _CompatConn:
+    """Camada de compatibilidade: expõe conn.execute(sql, params) no estilo sqlite3,
+    convertendo automaticamente os placeholders '?' para '%s' do psycopg2.
+    Mantém o restante do código (db.execute(...).fetchone()/.fetchall()) inalterado."""
+
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def execute(self, sql: str, params=()):
+        sql_pg = sql.replace("?", "%s")
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql_pg, tuple(params) if params else ())
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
 def init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    global _PG_POOL
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+    _PG_POOL = psycopg2.pool.ThreadedConnectionPool(2, 20, dsn=DATABASE_URL)
     with get_connection() as conn:
-        colunas = {row["name"] for row in conn.execute("PRAGMA table_info(pdv_sales)").fetchall()}
-        if colunas and "data" not in colunas:
-            conn.execute("DROP TABLE pdv_sales")
-        cols_lojas = {row["name"] for row in conn.execute("PRAGMA table_info(lojas)").fetchall()}
-        if cols_lojas and "pdv_nome" not in cols_lojas:
-            conn.execute("ALTER TABLE lojas ADD COLUMN pdv_nome TEXT")
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        for stmt in SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+        conn.commit()
         row = conn.execute("SELECT id FROM lojas WHERE id = ?", ("loja-106",)).fetchone()
         if row is None:
             token = os.environ.get("LOJA_106_TOKEN") or secrets.token_hex(24)
@@ -184,13 +209,11 @@ def init_db() -> None:
 
 @contextmanager
 def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    pg_conn = _PG_POOL.getconn()
     try:
-        yield conn
+        yield _CompatConn(pg_conn)
     finally:
-        conn.close()
+        _PG_POOL.putconn(pg_conn)
 
 
 def get_db():
@@ -202,6 +225,8 @@ def get_db():
 async def lifespan(app: FastAPI):
     init_db()
     yield
+    if _PG_POOL:
+        _PG_POOL.closeall()
 
 
 app = FastAPI(title="Easy Auditoria API", lifespan=lifespan)
@@ -259,8 +284,8 @@ def _decode_token(token: str) -> int:
 
 def autenticar_usuario(
     authorization: Optional[str] = Header(default=None),
-    db: sqlite3.Connection = Depends(get_db),
-) -> sqlite3.Row:
+    db: Any = Depends(get_db),
+) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token ausente")
     usuario_id = _decode_token(authorization[len("Bearer "):].strip())
@@ -271,22 +296,22 @@ def autenticar_usuario(
 
 
 def requer_perfil(*perfis: str):
-    def dep(usuario: sqlite3.Row = Depends(autenticar_usuario)) -> sqlite3.Row:
+    def dep(usuario: dict = Depends(autenticar_usuario)) -> dict:
         if usuario["perfil"] not in perfis:
             raise HTTPException(status_code=403, detail="Sem permissÃ£o")
         return usuario
     return dep
 
 
-def _usuario_pode_acessar_loja(usuario: sqlite3.Row, loja_id: str) -> bool:
+def _usuario_pode_acessar_loja(usuario: dict, loja_id: str) -> bool:
     return usuario["perfil"] == "admin" or usuario["loja_id"] == loja_id
 
 
 def _loja_por_slug_autorizada(
     loja_slug: str,
-    usuario: sqlite3.Row,
-    db: sqlite3.Connection,
-) -> sqlite3.Row:
+    usuario: dict,
+    db: Any,
+) -> dict:
     loja_slug = _validar_safe_id(loja_slug, "Loja")
     loja_row = db.execute("SELECT id, slug, nome FROM lojas WHERE slug = ?", (loja_slug,)).fetchone()
     if loja_row is None:
@@ -298,9 +323,9 @@ def _loja_por_slug_autorizada(
 
 def _evento_autorizado(
     evento_id: int,
-    usuario: sqlite3.Row,
-    db: sqlite3.Connection,
-) -> sqlite3.Row:
+    usuario: dict,
+    db: Any,
+) -> dict:
     row = db.execute("SELECT id, loja_id FROM auditoria_eventos WHERE id = ?", (evento_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Evento nao encontrado")
@@ -317,7 +342,7 @@ class LoginIn(BaseModel):
 
 
 @app.post("/auth/login")
-def login(request: Request, dados: LoginIn, db: sqlite3.Connection = Depends(get_db)):
+def login(request: Request, dados: LoginIn, db: Any = Depends(get_db)):
     ip = request.client.host if request.client else "unknown"
     _rate_limit_login(f"{ip}:{dados.email.lower()}")
     row = db.execute(
@@ -338,7 +363,7 @@ def login(request: Request, dados: LoginIn, db: sqlite3.Connection = Depends(get
 
 
 @app.get("/auth/me")
-def me(usuario: sqlite3.Row = Depends(autenticar_usuario)):
+def me(usuario: dict = Depends(autenticar_usuario)):
     return {
         "id": usuario["id"],
         "nome": usuario["nome"],
@@ -373,7 +398,7 @@ class SenhaUpdate(BaseModel):
     nova_senha: str = Field(min_length=8, max_length=256)
 
 
-def _pode_gerenciar(quem: sqlite3.Row, perfil_alvo: str, loja_alvo: Optional[str]) -> bool:
+def _pode_gerenciar(quem: dict, perfil_alvo: str, loja_alvo: Optional[str]) -> bool:
     """Retorna True se `quem` tem autoridade para criar/editar um usuÃ¡rio com perfil_alvo na loja_alvo."""
     if quem["perfil"] == "admin":
         return True
@@ -385,8 +410,8 @@ def _pode_gerenciar(quem: sqlite3.Row, perfil_alvo: str, loja_alvo: Optional[str
 
 @app.get("/api/v1/usuarios")
 def listar_usuarios(
-    usuario: sqlite3.Row = Depends(requer_perfil("admin", "supervisor")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
 ):
     if usuario["perfil"] == "admin":
         rows = db.execute("SELECT id, nome, email, perfil, loja_id, ativo, criado_em FROM usuarios ORDER BY nome").fetchall()
@@ -401,8 +426,8 @@ def listar_usuarios(
 @app.post("/api/v1/usuarios", status_code=201)
 def criar_usuario(
     dados: UsuarioIn,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin", "supervisor")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
 ):
     if dados.perfil not in HIERARQUIA:
         raise HTTPException(status_code=400, detail="Perfil invÃ¡lido")
@@ -410,21 +435,23 @@ def criar_usuario(
         raise HTTPException(status_code=403, detail="Sem permissÃ£o para criar este perfil")
     try:
         cur = db.execute(
-            "INSERT INTO usuarios (nome, email, senha_hash, perfil, loja_id) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO usuarios (nome, email, senha_hash, perfil, loja_id) VALUES (?, ?, ?, ?, ?) RETURNING id",
             (dados.nome, dados.email, _hash_senha(dados.senha), dados.perfil, dados.loja_id),
         )
+        novo_id = cur.fetchone()["id"]
         db.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        db.rollback()
         raise HTTPException(status_code=409, detail="Email jÃ¡ cadastrado")
-    return {"ok": True, "id": cur.lastrowid}
+    return {"ok": True, "id": novo_id}
 
 
 @app.put("/api/v1/usuarios/{usuario_id}")
 def editar_usuario(
     usuario_id: int,
     dados: UsuarioUpdate,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin", "supervisor")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
@@ -446,8 +473,8 @@ def editar_usuario(
 def redefinir_senha(
     usuario_id: int,
     dados: SenhaUpdate,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin", "supervisor")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
@@ -465,8 +492,8 @@ def redefinir_senha(
 @app.delete("/api/v1/usuarios/{usuario_id}")
 def desativar_usuario(
     usuario_id: int,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin", "supervisor")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
 ):
     alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     if alvo is None:
@@ -495,8 +522,8 @@ class LojaUpdate(BaseModel):
 
 @app.get("/api/v1/lojas")
 def listar_lojas(
-    usuario: sqlite3.Row = Depends(requer_perfil("admin")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin")),
+    db: Any = Depends(get_db),
 ):
     rows = db.execute("SELECT id, nome, pdv_nome, api_token, criado_em FROM lojas ORDER BY nome").fetchall()
     return [dict(r) for r in rows]
@@ -505,8 +532,8 @@ def listar_lojas(
 @app.post("/api/v1/lojas", status_code=201)
 def criar_loja(
     dados: LojaIn,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin")),
+    db: Any = Depends(get_db),
 ):
     loja_id = dados.id.strip().lower()
     if not loja_id:
@@ -518,7 +545,8 @@ def criar_loja(
             (loja_id, loja_id, dados.nome, dados.pdv_nome, token),
         )
         db.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        db.rollback()
         raise HTTPException(status_code=409, detail="ID jÃ¡ cadastrado")
     return {"ok": True, "id": loja_id, "api_token": token}
 
@@ -527,8 +555,8 @@ def criar_loja(
 def editar_loja(
     loja_id: str,
     dados: LojaUpdate,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin")),
+    db: Any = Depends(get_db),
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
@@ -544,8 +572,8 @@ def editar_loja(
 @app.delete("/api/v1/lojas/{loja_id}")
 def excluir_loja(
     loja_id: str,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin")),
+    db: Any = Depends(get_db),
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
@@ -563,8 +591,8 @@ def excluir_loja(
 @app.post("/api/v1/lojas/{loja_id}/token")
 def regenerar_token_loja(
     loja_id: str,
-    usuario: sqlite3.Row = Depends(requer_perfil("admin")),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(requer_perfil("admin")),
+    db: Any = Depends(get_db),
 ):
     loja = db.execute("SELECT id FROM lojas WHERE id = ?", (loja_id,)).fetchone()
     if loja is None:
@@ -577,8 +605,8 @@ def regenerar_token_loja(
 
 def autenticar_loja(
     authorization: Optional[str] = Header(default=None),
-    db: sqlite3.Connection = Depends(get_db),
-) -> sqlite3.Row:
+    db: Any = Depends(get_db),
+) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token ausente")
     token = authorization[len("Bearer "):].strip()
@@ -625,8 +653,8 @@ class SalesIn(BaseModel):
 @app.post("/api/v1/events")
 def criar_evento(
     evento: EventoIn,
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     severidade = severidade_de_acao(evento.resultado.acao_recomendada)
     status = status_de_resultado(evento.resultado.resultado)
@@ -662,7 +690,7 @@ def criar_evento(
     db.commit()
     # ORDER BY id DESC para pegar o evento recém-inserido (não um anterior com mesma timestamp)
     row = db.execute(
-        "SELECT id FROM auditoria_eventos WHERE loja_id = ? AND timestamp = ? AND pdv = ? AND imagem IS ? ORDER BY id DESC LIMIT 1",
+        "SELECT id FROM auditoria_eventos WHERE loja_id = ? AND timestamp = ? AND pdv = ? AND imagem IS NOT DISTINCT FROM ? ORDER BY id DESC LIMIT 1",
         (loja["id"], evento.timestamp, evento.pdv, evento.imagem),
     ).fetchone()
     return {"ok": True, "id": row["id"] if row else None}
@@ -671,14 +699,14 @@ def criar_evento(
 @app.post("/api/v1/health")
 def atualizar_health(
     itens: list[HealthItemIn],
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     for item in itens:
         db.execute(
             """
             INSERT INTO pdv_health (loja_id, pdv, bridge, imhdx, audit, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, ?, NOW())
             ON CONFLICT (loja_id, pdv) DO UPDATE SET
                 bridge = excluded.bridge,
                 imhdx = excluded.imhdx,
@@ -694,14 +722,14 @@ def atualizar_health(
 @app.post("/api/v1/sales")
 def atualizar_vendas(
     vendas: SalesIn,
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     data = vendas.data or date.today().isoformat()
     db.execute(
         """
         INSERT INTO pdv_sales (loja_id, pdv, data, total, cupons, atualizado_em)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?, NOW())
         ON CONFLICT (loja_id, pdv, data) DO UPDATE SET
             total = excluded.total,
             cupons = excluded.cupons,
@@ -718,8 +746,8 @@ def obter_vendas(
     loja: str,
     data: Optional[str] = None,
     pdv: list[str] = Query(default=[]),
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
@@ -755,7 +783,7 @@ def _formatar_valor(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _evento_para_alerta(row: sqlite3.Row, loja_token: str = "") -> dict:
+def _evento_para_alerta(row: dict, loja_token: str = "") -> dict:
     resultado = row["resultado"] or "NAO_ANALISADO"
     event, default_subtitle = EVENTO_LABELS.get(resultado, EVENTO_LABELS["NAO_ANALISADO"])
     status = row["status"]
@@ -795,8 +823,8 @@ def listar_alertas(
     data: Optional[str] = None,
     cupom: Optional[str] = None,
     pdv: list[str] = Query(default=[]),
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
@@ -834,8 +862,8 @@ def listar_alertas(
 @app.get("/api/v1/health")
 def listar_health(
     loja: str,
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     loja_row = _loja_por_slug_autorizada(loja, usuario, db)
 
@@ -858,8 +886,8 @@ def _video_path(evento_id: int) -> Path:
 def enviar_imagem_evento(
     evento_id: int,
     file: UploadFile,
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     row = db.execute(
         "SELECT id FROM auditoria_eventos WHERE id = ? AND loja_id = ?",
@@ -879,7 +907,7 @@ def obter_imagem_evento(
     evento_id: int,
     token: Optional[str] = Query(default=None),
     authorization: Optional[str] = Header(default=None),
-    db: sqlite3.Connection = Depends(get_db),
+    db: Any = Depends(get_db),
 ):
     # Aceita token da loja via query param OU JWT de usuario via header
     loja = None
@@ -910,8 +938,8 @@ def obter_imagem_evento(
 def enviar_video_evento(
     evento_id: int,
     file: UploadFile,
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     row = db.execute(
         "SELECT id FROM auditoria_eventos WHERE id = ? AND loja_id = ?",
@@ -926,8 +954,8 @@ def enviar_video_evento(
 @app.get("/api/v1/events/{evento_id}/video")
 def obter_video_evento(
     evento_id: int,
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     _evento_autorizado(evento_id, usuario, db)
     caminho = _video_path(evento_id)
@@ -950,8 +978,8 @@ def solicitar_video_cupom(
     start_time: str = Query(...),
     end_time: str = Query(...),
     loja: Optional[str] = Query(default=None),
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     cupom = _validar_safe_id(cupom, "Cupom")
     pdv = _validar_pdv(pdv)
@@ -969,7 +997,14 @@ def solicitar_video_cupom(
     if _purchase_video_path(loja_id, pdv, cupom).is_file():
         return {"status": "ready"}
     db.execute(
-        "INSERT OR REPLACE INTO video_requests (loja_id, pdv, cupom, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+        """
+        INSERT INTO video_requests (loja_id, pdv, cupom, start_time, end_time, status)
+        VALUES (?, ?, ?, ?, ?, 'pending')
+        ON CONFLICT (loja_id, pdv, cupom) DO UPDATE SET
+            start_time = excluded.start_time,
+            end_time = excluded.end_time,
+            status = excluded.status
+        """,
         (loja_id, pdv, cupom, start_time, end_time),
     )
     db.commit()
@@ -978,8 +1013,8 @@ def solicitar_video_cupom(
 
 @app.get("/api/v1/cupom_video/pending")
 def listar_video_pendentes(
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     rows = db.execute(
         "SELECT cupom, pdv, start_time, end_time FROM video_requests WHERE loja_id = ? AND status = 'pending' ORDER BY criado_em LIMIT 3",
@@ -992,8 +1027,8 @@ def listar_video_pendentes(
 def marcar_video_failed(
     cupom: str = Query(...),
     pdv: str = Query(...),
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     cupom = _validar_safe_id(cupom, "Cupom")
     pdv = _validar_pdv(pdv)
@@ -1010,8 +1045,8 @@ def status_video_request(
     cupom: str = Query(...),
     pdv: str = Query(...),
     loja: str = Query(...),
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     row_loja = _loja_por_slug_autorizada(loja, usuario, db)
     cupom = _validar_safe_id(cupom, "Cupom")
@@ -1030,8 +1065,8 @@ def upload_video_cupom(
     cupom: str = Query(...),
     pdv: str = Query(...),
     file: UploadFile = None,
-    loja: sqlite3.Row = Depends(autenticar_loja),
-    db: sqlite3.Connection = Depends(get_db),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
 ):
     cupom = _validar_safe_id(cupom, "Cupom")
     pdv = _validar_pdv(pdv)
@@ -1048,13 +1083,157 @@ def upload_video_cupom(
     return {"ok": True}
 
 
+# --- Config endpoints ---
+
+_CAMPOS_SENSIVEIS = ("telegram_token", "auditoria_api_key", "camera_pass")
+
+
+class ConfigLojaIn(BaseModel):
+    loja_nome:                    Optional[str]  = Field(default=None, max_length=120)
+    ambiente:                     Optional[str]  = Field(default=None, max_length=40)
+    operadores:                   Optional[list] = None
+    telegram_token:               Optional[str]  = Field(default=None, max_length=256)
+    telegram_chat_id:             Optional[str]  = Field(default=None, max_length=64)
+    telegram_alertas:             Optional[bool] = None
+    telegram_severidade_minima:   Optional[str]  = Field(default=None, pattern=r"^(critical|warning|ok)$")
+    telegram_silencioso_inicio:   Optional[str]  = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    telegram_silencioso_fim:      Optional[str]  = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+
+
+class ConfigPdvIn(BaseModel):
+    auditoria_enabled:           Optional[bool]  = None
+    auditoria_modo:              Optional[str]   = Field(default=None, pattern=r"^(auto|manual)$")
+    auditoria_provedor:          Optional[str]   = Field(default=None, pattern=r"^(groq|gemini)$")
+    auditoria_api_key:           Optional[str]   = Field(default=None, max_length=256)
+    auditoria_modelo:            Optional[str]   = Field(default=None, max_length=128)
+    auditoria_confianca_minima:  Optional[int]   = Field(default=None, ge=0, le=100)
+    auditoria_valor_minimo:      Optional[float] = Field(default=None, ge=0, le=100000)
+    auditoria_max_por_hora:      Optional[int]   = Field(default=None, ge=0, le=10000)
+    auditoria_prompt:            Optional[str]   = Field(default=None, max_length=4000)
+    camera_host:                 Optional[str]   = Field(default=None, max_length=256)
+    camera_user:                 Optional[str]   = Field(default=None, max_length=64)
+    camera_pass:                 Optional[str]   = Field(default=None, max_length=256)
+    camera_channel:              Optional[int]   = Field(default=None, ge=1, le=32)
+    camera_photo_delay:          Optional[int]   = Field(default=None, ge=0, le=300)
+    camera_clip_duration:        Optional[int]   = Field(default=None, ge=5, le=600)
+
+
+def _mascara_config(config: dict) -> dict:
+    result = dict(config)
+    for campo in _CAMPOS_SENSIVEIS:
+        if result.get(campo):
+            result[campo] = "***"
+    return result
+
+
+def _merge_config(existente: dict, novos: dict) -> dict:
+    merged = dict(existente)
+    for k, v in novos.items():
+        if v is None:
+            continue
+        if k in _CAMPOS_SENSIVEIS and v == "***":
+            continue
+        merged[k] = v
+    return merged
+
+
+def _get_config_row(loja_id: str, pdv: str, db: Any) -> dict:
+    row = db.execute(
+        "SELECT config FROM pdv_configuracoes WHERE loja_id = ? AND pdv = ?",
+        (loja_id, pdv)
+    ).fetchone()
+    if not row:
+        return {}
+    cfg = row["config"]
+    return cfg if isinstance(cfg, dict) else json.loads(cfg)
+
+
+def _save_config_row(loja_id: str, pdv: str, config: dict, db: Any) -> None:
+    db.execute(
+        """
+        INSERT INTO pdv_configuracoes (loja_id, pdv, config, atualizado_em)
+        VALUES (?, ?, ?, NOW())
+        ON CONFLICT (loja_id, pdv) DO UPDATE SET config = excluded.config, atualizado_em = NOW()
+        """,
+        (loja_id, pdv, json.dumps(config))
+    )
+    db.commit()
+
+
+@app.get("/api/v1/config")
+def obter_config_loja(
+    loja: str = Query(...),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
+    return _mascara_config(_get_config_row(loja_row["id"], "*", db))
+
+
+@app.put("/api/v1/config")
+def salvar_config_loja(
+    dados: ConfigLojaIn,
+    loja: str = Query(...),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
+    existente = _get_config_row(loja_row["id"], "*", db)
+    merged = _merge_config(existente, dados.model_dump(exclude_none=True))
+    _save_config_row(loja_row["id"], "*", merged, db)
+    return {"ok": True}
+
+
+@app.get("/api/v1/config/{pdv_id}")
+def obter_config_pdv(
+    pdv_id: str,
+    loja: str = Query(...),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
+    pdv_id = _validar_pdv(pdv_id)
+    return _mascara_config(_get_config_row(loja_row["id"], pdv_id, db))
+
+
+@app.put("/api/v1/config/{pdv_id}")
+def salvar_config_pdv(
+    pdv_id: str,
+    dados: ConfigPdvIn,
+    loja: str = Query(...),
+    usuario: dict = Depends(requer_perfil("admin", "supervisor")),
+    db: Any = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
+    pdv_id = _validar_pdv(pdv_id)
+    existente = _get_config_row(loja_row["id"], pdv_id, db)
+    merged = _merge_config(existente, dados.model_dump(exclude_none=True))
+    _save_config_row(loja_row["id"], pdv_id, merged, db)
+    return {"ok": True}
+
+
+@app.get("/api/v1/pdv-config")
+def obter_pdv_config(
+    pdv: str = Query(...),
+    loja: dict = Depends(autenticar_loja),
+    db: Any = Depends(get_db),
+):
+    """Retorna config mesclada (loja + PDV) para uso pelos serviços do PDV (sem mascarar campos sensíveis)."""
+    pdv = _validar_pdv(pdv)
+    loja_cfg = _get_config_row(loja["id"], "*", db)
+    pdv_cfg = _get_config_row(loja["id"], pdv, db)
+    merged = dict(loja_cfg)
+    merged.update(pdv_cfg)
+    return merged
+
+
 @app.get("/api/v1/cupom_video")
 def obter_video_cupom(
     cupom: str = Query(...),
     pdv: str = Query(...),
     loja: str = Query(...),
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     row = _loja_por_slug_autorizada(loja, usuario, db)
     caminho = _purchase_video_path(row["id"], pdv, cupom)
@@ -1072,17 +1251,11 @@ class DecisionIn(BaseModel):
 def decidir_alerta(
     alerta_id: int,
     decisao: DecisionIn,
-    usuario: sqlite3.Row = Depends(autenticar_usuario),
-    db: sqlite3.Connection = Depends(get_db),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
 ):
     _evento_autorizado(alerta_id, usuario, db)
     novo_status = "resolved" if decisao.action == "save" else "ignored"
-    # Adicionar coluna observacao se nao existir
-    try:
-        db.execute("ALTER TABLE auditoria_eventos ADD COLUMN observacao TEXT")
-        db.commit()
-    except Exception:
-        pass
     cursor = db.execute(
         "UPDATE auditoria_eventos SET status = ?, observacao = ? WHERE id = ?",
         (novo_status, decisao.observacao or "", alerta_id),
