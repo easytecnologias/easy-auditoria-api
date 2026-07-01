@@ -971,7 +971,7 @@ def deletar_evento(
     db: Any = Depends(get_db),
 ):
     _evento_autorizado(evento_id, usuario, db)
-    for p in [_image_path(evento_id), _video_path(evento_id)]:
+    for p in [_imagem_path(evento_id), _video_path(evento_id)]:
         try:
             if p.is_file():
                 p.unlink()
@@ -1007,7 +1007,7 @@ def deletar_eventos_bulk(
     rows = db.execute(query, params).fetchall()
     ids = [r["id"] for r in rows]
     for eid in ids:
-        for p in [_image_path(eid), _video_path(eid)]:
+        for p in [_imagem_path(eid), _video_path(eid)]:
             try:
                 if p.is_file():
                     p.unlink()
