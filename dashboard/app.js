@@ -1041,6 +1041,21 @@ document.getElementById("pdvFilterAll").addEventListener("change", event => {
   aplicarFiltroPdv();
 });
 
+// ── Delete global handlers (event delegation — não depende de iniciarView*) ───
+document.addEventListener("click", event => {
+  const btn = event.target.closest("#btnAlertasClear, #btnAuditIaClear");
+  if (!btn) return;
+  event.stopPropagation();
+  const isAlerta = btn.id === "btnAlertasClear";
+  const sel = isAlerta ? _selAlertas : _selAuditIa;
+  const reload = isAlerta ? carregarAlertas : carregarAuditIa;
+  if (sel.size > 0) {
+    _excluirSelecionados(sel, btn.id, reload);
+  } else {
+    _limparEventos({}).then(n => { if (n > 0) reload(); });
+  }
+});
+
 document.getElementById("prevDay").addEventListener("click", () => mudarData(somarDias(selectedDate, -1)));
 document.getElementById("nextDay").addEventListener("click", () => {
   if (!isHoje(selectedDate)) mudarData(somarDias(selectedDate, 1));
@@ -2718,18 +2733,6 @@ function iniciarViewAlertas() {
   document.getElementById("btnAlertsRefresh")?.addEventListener("click", () => {
     carregarAlertas();
   });
-  const clearAlertas = document.getElementById("btnAlertasClear");
-  if (clearAlertas && !clearAlertas.dataset.bound) {
-    clearAlertas.addEventListener("click", () => {
-      if (_selAlertas.size > 0) {
-        _excluirSelecionados(_selAlertas, carregarAlertas);
-      } else {
-        _limparEventos({}).then(n => { if (n > 0) carregarAlertas(); });
-      }
-    });
-    clearAlertas.dataset.bound = "1";
-  }
-
   const selAllAlertas = document.getElementById("selAllAlertas");
   if (selAllAlertas && !selAllAlertas.dataset.bound) {
     selAllAlertas.addEventListener("change", () => {
@@ -3106,18 +3109,6 @@ function iniciarViewAuditIa() {
     refresh.dataset.bound = "1";
   }
 
-  const clearAudit = document.getElementById("btnAuditIaClear");
-  if (clearAudit && !clearAudit.dataset.bound) {
-    clearAudit.addEventListener("click", () => {
-      if (_selAuditIa.size > 0) {
-        _excluirSelecionados(_selAuditIa, carregarAuditIa);
-      } else {
-        _limparEventos({}).then(n => { if (n > 0) carregarAuditIa(); });
-      }
-    });
-    clearAudit.dataset.bound = "1";
-  }
-
   const selAllAudit = document.getElementById("selAllAuditIa");
   if (selAllAudit && !selAllAudit.dataset.bound) {
     selAllAudit.addEventListener("change", () => {
@@ -3171,10 +3162,22 @@ async function _limparEventos(params) {
   return d.deletados || 0;
 }
 
-async function _excluirSelecionados(sel, reload) {
-  for (const id of [...sel]) await _deletarEvento(id);
+async function _excluirSelecionados(sel, btnId, reload) {
+  const btn = document.getElementById(btnId);
+  const ids = [...sel];
+  if (!ids.length) return;
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
+  let erros = 0;
+  for (const id of ids) {
+    try {
+      const ok = await _deletarEvento(id);
+      if (!ok) erros++;
+    } catch(e) { erros++; }
+  }
+  if (btn) { btn.disabled = false; btn.style.opacity = ""; }
   sel.clear();
   reload();
+  if (erros > 0 && btn) btn.title = `Erro ao excluir ${erros} item(s)`;
 }
 
 function _sincronizarSelAll(checkboxId, sel, rows) {
