@@ -3593,9 +3593,9 @@ async function iniciarViewConfigAuditoria() {
   _cfgSet("cfgAudModoAuto", (cfg.auditoria_modo || "auto") === "auto");
   _cfgSet("cfgAudValorMin", cfg.auditoria_valor_minimo ?? "");
   _cfgSet("cfgAudMaxHora", cfg.auditoria_max_por_hora ?? "");
-  _cfgSet("cfgAudProvedor", cfg.auditoria_provedor || "groq");
+  _cfgSet("cfgAudProvedor", cfg.auditoria_provedor || "gemini");
   _cfgSet("cfgAudApiKey", cfg.auditoria_api_key || "");
-  _cfgSet("cfgAudModelo", cfg.auditoria_modelo || "");
+  _cfgSet("cfgAudModelo", cfg.auditoria_modelo || "gemini-2.5-flash");
   _cfgSet("cfgAudConfianca", cfg.auditoria_confianca_minima ?? "");
   _cfgSet("cfgAudPrompt", cfg.auditoria_prompt || "");
   lucide.createIcons();
