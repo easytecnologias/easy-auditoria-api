@@ -2714,6 +2714,13 @@ function iniciarViewAlertas() {
   document.getElementById("btnAlertsRefresh")?.addEventListener("click", () => {
     carregarAlertas();
   });
+  const clearAlertas = document.getElementById("btnAlertasClear");
+  if (clearAlertas && !clearAlertas.dataset.bound) {
+    clearAlertas.addEventListener("click", () => {
+      _limparEventos({}).then(n => { if (n > 0) carregarAlertas(); });
+    });
+    clearAlertas.dataset.bound = "1";
+  }
   document.querySelectorAll(".alerts2-filter").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".alerts2-filter").forEach(b => b.classList.remove("active"));
@@ -2773,15 +2780,20 @@ function renderAlertas2() {
       <td class="product-cell"><strong>${alert.product}</strong><span>${alert.qty} · ${alert.value}</span></td>
       <td><div class="confidence"><span>${alert.confidence}%</span><i class="confidence-meter"><i style="width:${alert.confidence}%"></i></i></div></td>
       <td><span class="state-badge ${alert.state}">${alert.stateText}</span></td>
-      <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
+      <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button><button data-action="delete" title="Excluir" style="color:var(--danger,#e53e3e)"><i data-lucide="trash-2"></i></button></div></td>
     </tr>`).join("");
 
   table2.querySelectorAll("tr").forEach(row => {
     row.addEventListener("click", event => {
       const a = alerts.find(x => x.id === Number(row.dataset.id));
       if (!a) return;
-      if (event.target.closest("[data-action='video']")) { selectedAlert = a; document.getElementById("videoButton").click(); }
-      else { openDrawer(a); }
+      if (event.target.closest("[data-action='delete']")) {
+        _deletarEvento(a.id).then(ok => { if (ok) carregarAlertas(); });
+      } else if (event.target.closest("[data-action='video']")) {
+        selectedAlert = a; document.getElementById("videoButton").click();
+      } else {
+        openDrawer(a);
+      }
     });
   });
 
@@ -3058,6 +3070,14 @@ function iniciarViewAuditIa() {
     refresh.dataset.bound = "1";
   }
 
+  const clearAudit = document.getElementById("btnAuditIaClear");
+  if (clearAudit && !clearAudit.dataset.bound) {
+    clearAudit.addEventListener("click", () => {
+      _limparEventos({}).then(n => { if (n > 0) carregarAuditIa(); });
+    });
+    clearAudit.dataset.bound = "1";
+  }
+
   carregarAuditIa();
 }
 
@@ -3077,6 +3097,24 @@ async function carregarAuditIa() {
     auditIaItems = [];
     renderAuditIa();
   }
+}
+
+async function _deletarEvento(id) {
+  if (!confirm("Excluir este registro?")) return false;
+  const resp = await apiFetch(`/api/v1/events/${id}`, { method: "DELETE" });
+  return resp.ok;
+}
+
+async function _limparEventos(params) {
+  const msg = params.resultado
+    ? `Excluir todos os registros "${params.resultado}" do dia?`
+    : "Excluir TODOS os registros do dia?";
+  if (!confirm(msg)) return 0;
+  const qs = new URLSearchParams({ loja: LOJA, data: selectedDate, ...params });
+  const resp = await apiFetch(`/api/v1/events?${qs}`, { method: "DELETE" });
+  if (!resp.ok) return 0;
+  const d = await resp.json();
+  return d.deletados || 0;
 }
 
 function renderAuditIa() {
@@ -3107,14 +3145,16 @@ function renderAuditIa() {
         <td><div class="event-cell"><img class="mini-cctv" src="${item.imageUrl || 'assets/frame-register.svg'}" loading="lazy" onerror="this.src='assets/frame-register.svg';this.onerror=null" alt=""><div><strong>${escapeText(item.event || "-")}</strong><span>${escapeText(subtitle)}</span></div></div></td>
         <td class="product-cell"><strong>${escapeText(item.product || "-")}</strong><span>${escapeText(item.value || "-")}</span></td>
         <td><div class="confidence"><span>${item.confidence || 0}%</span><i class="confidence-meter"><i style="width:${item.confidence || 0}%"></i></i></div></td>
-        <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button></div></td>
+        <td><div class="row-actions"><button data-action="open" title="Revisar"><i data-lucide="scan-search"></i></button><button data-action="video" title="Ver vídeo"><i data-lucide="play"></i></button><button data-action="delete" title="Excluir" style="color:var(--danger,#e53e3e)"><i data-lucide="trash-2"></i></button></div></td>
       </tr>`;
   }).join("") : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">Sem registros para o filtro</td></tr>`;
   tbody.querySelectorAll("tr[data-id]").forEach(row => {
     row.addEventListener("click", event => {
       const item = auditIaItems.find(i => String(i.id) === row.dataset.id);
       if (!item) return;
-      if (event.target.closest("[data-action='video']")) {
+      if (event.target.closest("[data-action='delete']")) {
+        _deletarEvento(item.id).then(ok => { if (ok) carregarAuditIa(); });
+      } else if (event.target.closest("[data-action='video']")) {
         openDrawer(item);
         setTimeout(() => document.getElementById("videoButton").click(), 100);
       } else {

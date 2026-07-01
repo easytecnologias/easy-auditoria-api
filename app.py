@@ -964,6 +964,63 @@ def obter_video_evento(
     return FileResponse(caminho, media_type="video/mp4")
 
 
+@app.delete("/api/v1/events/{evento_id}")
+def deletar_evento(
+    evento_id: int,
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
+):
+    _evento_autorizado(evento_id, usuario, db)
+    for p in [_image_path(evento_id), _video_path(evento_id)]:
+        try:
+            if p.is_file():
+                p.unlink()
+        except Exception:
+            pass
+    db.execute("DELETE FROM auditoria_eventos WHERE id = ?", (evento_id,))
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/v1/events")
+def deletar_eventos_bulk(
+    loja: str = Query(...),
+    data: Optional[str] = Query(None),
+    pdv: Optional[str] = Query(None),
+    resultado: Optional[str] = Query(None),
+    usuario: dict = Depends(autenticar_usuario),
+    db: Any = Depends(get_db),
+):
+    loja_row = _loja_por_slug_autorizada(loja, usuario, db)
+    query = "SELECT id FROM auditoria_eventos WHERE loja_id = ?"
+    params: list = [loja_row["id"]]
+    if data:
+        data = _validar_data(data)
+        query += " AND DATE(timestamp) = ?"
+        params.append(data)
+    if pdv:
+        query += " AND pdv = ?"
+        params.append(pdv)
+    if resultado:
+        query += " AND resultado = ?"
+        params.append(resultado)
+    rows = db.execute(query, params).fetchall()
+    ids = [r["id"] for r in rows]
+    for eid in ids:
+        for p in [_image_path(eid), _video_path(eid)]:
+            try:
+                if p.is_file():
+                    p.unlink()
+            except Exception:
+                pass
+    db.execute(
+        "DELETE FROM auditoria_eventos WHERE id IN (%s)" % ",".join("?" * len(ids)),
+        ids,
+    ) if ids else None
+    db.commit()
+    return {"ok": True, "deletados": len(ids)}
+
+
 def _purchase_video_path(loja_id: int, pdv: str, cupom: str) -> Path:
     PURCHASE_VIDEOS_DIR.mkdir(exist_ok=True)
     pdv = _validar_pdv(pdv)
