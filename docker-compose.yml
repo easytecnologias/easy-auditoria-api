@@ -1,17 +1,42 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: easy-auditoria-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: easy_auditoria
+      POSTGRES_USER: easy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-easy_auditoria_2026}
+    volumes:
+      - easy-auditoria-pg-data:/var/lib/postgresql/data
+    networks:
+      - sightops-platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easy -d easy_auditoria"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   easy-auditoria-api:
     build: .
     container_name: easy-auditoria-api
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      - DB_PATH=/data/easy-auditoria.db
+      - DATABASE_URL=postgresql://easy:${POSTGRES_PASSWORD:-easy_auditoria_2026}@postgres:5432/easy_auditoria
       - LOJA_106_TOKEN=${LOJA_106_TOKEN:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://10.10.12.7:8098,https://10.10.12.7:8098,http://localhost:8098}
     volumes:
       - easy-auditoria-api-data:/data
     networks:
       - sightops-platform
 
 volumes:
+  easy-auditoria-pg-data:
   easy-auditoria-api-data:
 
 networks:

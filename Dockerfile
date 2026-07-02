@@ -5,9 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py schema.sql ./
-
-ENV DB_PATH=/data/easy-auditoria.db
+COPY app.py schema_pg.sql ./
 
 EXPOSE 8000
 
