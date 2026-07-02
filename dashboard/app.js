@@ -9,6 +9,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (ambEl) ambEl.textContent = AMBIENTE;
 });
 
+// Adiciona N segundos a um timestamp "YYYY-MM-DD HH:MM:SS" (spy file offset)
+function _tsAdd(ts, secs) {
+  if (!ts) return ts;
+  const [date, time] = ts.split(' ');
+  if (!time) return ts;
+  const [h, m, s] = time.split(':').map(Number);
+  const tot = h * 3600 + m * 60 + s + secs;
+  const pad = n => String(n).padStart(2, '0');
+  return `${date} ${pad(Math.floor(tot/3600)%24)}:${pad(Math.floor(tot/60)%60)}:${pad(tot%60)}`;
+}
+
 // Formatador de moeda BRL com separador de milhar (R$ 29.871,00)
 function fmtBRL(v) {
   return "R$ " + (v || 0).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -205,13 +216,10 @@ async function carregarAlertas() {
   renderAlerts();
   renderAlertMetrics();
   renderOccurrenceTypes();
-  // Atualizar view Alertas se estiver aberta
-  if (document.getElementById("viewAlerts")?.style.display !== "none") {
-    const dateInp = document.getElementById("alertsDateInput");
-    if (dateInp) dateInp.value = selectedDate;
-    _syncAlertDateBtns?.();
-    renderAlertas2?.();
-  }
+  const dateInp = document.getElementById("alertsDateInput");
+  if (dateInp) dateInp.value = selectedDate;
+  _syncAlertDateBtns?.();
+  renderAlertas2?.();
 }
 
 async function carregarHealth() {
@@ -647,7 +655,25 @@ function openVarDrawer() {
   varDrawer.setAttribute("aria-hidden", "false");
 }
 
+let _varFotoItemFiltro = "";  // item_top filter active inside fotos drawer
+
+function _abrirVarFotosCupom(cupomNum, itemFiltro) {
+  _varFotoItemFiltro = (itemFiltro || "").toLowerCase();
+  varResultLista = [];
+  varTipoAtivo = "all";
+  document.getElementById("varCupomInput").value = cupomNum;
+  document.getElementById("varResultModalBreadcrumb").textContent =
+    `PDV ${String(varPdvSelecionado).padStart(2, "0")} · ${LOJA_NOME}`;
+  document.getElementById("varResultModalTitle").textContent =
+    `Cupom ${cupomNum}` + (itemFiltro ? ` — ${itemFiltro}` : "");
+  varAbaAtiva = "fotos";
+  document.querySelectorAll(".var-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "fotos"));
+  renderVarBody();
+  openVarDrawer();
+}
+
 function closeVarDrawer() {
+  _varFotoItemFiltro = "";
   varDrawer.classList.remove("open");
   varBackdrop.classList.remove("open");
   varDrawer.setAttribute("aria-hidden", "true");
@@ -1052,7 +1078,14 @@ document.addEventListener("click", event => {
   if (sel.size > 0) {
     _excluirSelecionados(sel, btn.id, reload);
   } else {
-    _limparEventos({}).then(n => { if (n > 0) reload(); });
+    _limparEventos({}).then(n => {
+      if (n > 0) {
+        _toast(`${n} registro${n !== 1 ? "s" : ""} excluído${n !== 1 ? "s" : ""}`);
+        reload();
+      } else {
+        _toast("Nenhum registro para excluir", "info");
+      }
+    });
   }
 });
 
@@ -1415,6 +1448,72 @@ function abrirVarSearch(pdv) {
   }, 15000);
 }
 
+let _cuponsVarTodos = [];  // cache para filtro por item
+
+function _renderCuponsVarTabela(lista, filtroLabel) {
+  const tbody  = document.getElementById("varCuponsBody");
+  const resumo = document.getElementById("varCuponsResumo");
+  if (!tbody) return;
+  if (resumo) {
+    const total = _cuponsVarTodos.length;
+    resumo.textContent = filtroLabel
+      ? `${lista.length} de ${total} cupons (item: "${filtroLabel}")`
+      : `${total} cupons · ${_cuponsVarTodos.filter(c=>c.fechou).length} fechados`;
+  }
+  if (!lista.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Nenhum cupom encontrado${filtroLabel ? ` com "${filtroLabel}"` : ""}.</td></tr>`;
+    return;
+  }
+  const alertasPorCupom = {};
+  (alerts || []).forEach(a => {
+    const num = String(a.receipt || "").replace(/\D/g,"");
+    alertasPorCupom[num] = (alertasPorCupom[num] || 0) + 1;
+  });
+  tbody.innerHTML = lista.slice(0, 50).map(c => {
+    const numStr = String(c.numero||"");
+    const nalerts = alertasPorCupom[numStr] || 0;
+    const badge = nalerts > 0
+      ? `<span data-badge-cupom="${c.numero}" style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:3px;background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✓</span>`;
+    const topItem = c.item_top ? `<span style="color:var(--primary);margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>';
+    return `<tr style="cursor:pointer" data-cupom="${c.numero}" data-item-top="${(c.item_top||"").replace(/"/g,"&quot;")}">
+      <td>${(c.abriu||"").slice(0,5)}</td>
+      <td><strong>${c.numero}</strong></td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.operador||"—"}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${topItem}</td>
+      <td style="text-align:center">${c.itens||0}</td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap">${fmtBRL(c.total)}</td>
+      <td style="text-align:center">${badge}</td>
+      <td style="text-align:center">
+        <div style="display:flex;justify-content:center;gap:4px">
+          <button class="icon-button" data-action="nota" data-cupom="${c.numero}" title="Ver cupom" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="file-text" style="width:14px;height:14px"></i></button>
+          <button class="icon-button" data-action="video" data-cupom="${c.numero}" title="Ver vídeo" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="play-circle" style="width:14px;height:14px;color:var(--primary)"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+  lucide.createIcons();
+  tbody.querySelectorAll("tr[data-cupom]").forEach(row => {
+    row.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-action]");
+      const badge = e.target.closest("[data-badge-cupom]");
+      if (badge) {
+        const cupom = badge.dataset.badgeCupom;
+        const alertsBtn = document.querySelector(".nav-item[data-view='alerts']");
+        if (alertsBtn) alertsBtn.click();
+        setTimeout(() => {
+          const inp = document.getElementById("searchInput2");
+          if (inp) { inp.value = cupom; inp.dispatchEvent(new Event("input")); }
+        }, 100);
+        return;
+      }
+      if (btn?.dataset.action === "nota") { abrirCupomDrawer(btn.dataset.cupom); return; }
+      if (btn?.dataset.action === "video") { abrirVideoCompra(btn.dataset.cupom); return; }
+      _abrirVarFotosCupom(row.dataset.cupom, row.dataset.itemTop);
+    });
+  });
+}
+
 async function _carregarCuponsVar() {
   const STREAMER = (window.APP_CONFIG||{}).STREAMER_URL || "";
   const TOKEN    = (window.APP_CONFIG||{}).STREAMER_TOKEN || "";
@@ -1428,68 +1527,9 @@ async function _carregarCuponsVar() {
     if (!r.ok) throw new Error("streamer offline");
     const d = await r.json();
     const cupons = (d.cupons || []).slice().reverse(); // mais recente primeiro
+    _cuponsVarTodos = cupons;
 
-    // Mapear alertas por cupom
-    const alertasPorCupom = {};
-    (alerts || []).forEach(a => {
-      const num = String(a.receipt || "").replace(/\D/g,"");
-      alertasPorCupom[num] = (alertasPorCupom[num] || 0) + 1;
-    });
-
-    if (!cupons.length) {
-      tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Nenhum cupom hoje.</td></tr>`;
-      return;
-    }
-
-    if (resumo) resumo.textContent = `${cupons.length} cupons · ${cupons.filter(c=>c.fechou).length} fechados`;
-
-    tbody.innerHTML = cupons.slice(0,10).map(c => {
-      const numStr = String(c.numero||"");
-      const nalerts = alertasPorCupom[numStr] || 0;
-      const badge = nalerts > 0
-        ? `<span data-badge-cupom="${c.numero}" style="display:inline-flex;align-items:center;gap:3px;background:#fff5f5;color:#c92a2a;border:1px solid #ffc9c9;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer" title="Ver alertas do cupom ${c.numero}"><i data-lucide="triangle-alert" style="width:10px;height:10px"></i>${nalerts}</span>`
-        : `<span style="display:inline-flex;align-items:center;gap:3px;background:#ebfbee;color:#2f9e44;border:1px solid #b2f2bb;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✓</span>`;
-      const total = fmtBRL(c.total);
-      const topItem = c.item_top ? `<span style="color:var(--primary);margin-right:4px">★</span>${c.item_top}` : '<span style="color:var(--border)">—</span>';
-      return `<tr style="cursor:pointer" data-cupom="${c.numero}">
-        <td>${(c.abriu||"").slice(0,5)}</td>
-        <td><strong>${c.numero}</strong></td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.operador||"—"}</td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${topItem}</td>
-        <td style="text-align:center">${c.itens||0}</td>
-        <td style="text-align:right;font-weight:600;white-space:nowrap">${total}</td>
-        <td style="text-align:center">${badge}</td>
-        <td style="text-align:center">
-          <div style="display:flex;justify-content:center;gap:4px">
-            <button class="icon-button" data-action="nota" data-cupom="${c.numero}" title="Ver cupom" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="file-text" style="width:14px;height:14px"></i></button>
-            <button class="icon-button" data-action="video" data-cupom="${c.numero}" title="Ver vídeo" style="border:1px solid var(--border);border-radius:6px;width:30px;height:30px"><i data-lucide="play-circle" style="width:14px;height:14px;color:var(--primary)"></i></button>
-          </div>
-        </td>
-      </tr>`;
-    }).join("");
-
-    lucide.createIcons();
-
-    tbody.querySelectorAll("tr[data-cupom]").forEach(row => {
-      row.addEventListener("click", e => {
-        const btn = e.target.closest("button[data-action]");
-        const badge = e.target.closest("[data-badge-cupom]");
-        if (badge) {
-          // Navegar para Alertas filtrado pelo cupom
-          const cupom = badge.dataset.badgeCupom;
-          const alertsBtn = document.querySelector(".nav-item[data-view='alerts']");
-          if (alertsBtn) alertsBtn.click();
-          setTimeout(() => {
-            const inp = document.getElementById("searchInput2");
-            if (inp) { inp.value = cupom; inp.dispatchEvent(new Event("input")); }
-          }, 100);
-          return;
-        }
-        if (btn?.dataset.action === "nota") { abrirCupomDrawer(btn.dataset.cupom); return; }
-        if (btn?.dataset.action === "video") { abrirVideoCompra(btn.dataset.cupom); return; }
-        abrirCupomDrawer(row.dataset.cupom);
-      });
-    });
+    _renderCuponsVarTabela(cupons);
 
   } catch(e) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Streamer offline — não foi possível carregar cupons.</td></tr>`;
@@ -1506,8 +1546,14 @@ document.getElementById("btnVoltarCards").addEventListener("click", () => {
 
 document.querySelector('input[name="varTipo"]').addEventListener && document.querySelectorAll('input[name="varTipo"]').forEach(r => {
   r.addEventListener("change", () => {
-    document.getElementById("varItemField").style.display =
-      document.querySelector('input[name="varTipo"]:checked').value === "item" ? "" : "none";
+    const isItem = document.querySelector('input[name="varTipo"]:checked').value === "item";
+    document.getElementById("varItemField").style.display = isItem ? "" : "none";
+    const cupomInp = document.getElementById("varCupomInput");
+    if (isItem) {
+      cupomInp.placeholder = "Ex: 221548 (opcional)";
+    } else {
+      cupomInp.placeholder = "Ex: 221548";
+    }
   });
 });
 
@@ -1576,7 +1622,7 @@ function renderVarBody() {
       const row = document.createElement("div");
       row.className = "var-foto-row" + (active ? " active" : "");
       row.innerHTML = `
-        <span class="var-foto-row-time">${(time || "").slice(0,5)}</span>
+        <span class="var-foto-row-time">${(time || "").slice(0,8)}</span>
         <span class="var-foto-row-prod">${product || ""}</span>
         <span class="var-foto-row-val">${valueStr || ""}</span>`;
       row.addEventListener("click", () => {
@@ -1595,7 +1641,7 @@ function renderVarBody() {
             _setFoto(a.imageUrl, `${a.time} · ${a.product}`, true);
           } else if (a.timestamp && STREAMER_URL_F) {
             _setFoto(
-              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(a.timestamp)}&token=${TOKEN_STREAMER_F}`,
+              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(_tsAdd(a.timestamp, -3))}&token=${TOKEN_STREAMER_F}`,
               `${a.time} · ${a.product}`, false
             );
           }
@@ -1608,7 +1654,7 @@ function renderVarBody() {
         _setFoto(first.imageUrl, `${first.time} · ${first.product}`, true);
       } else if (first.timestamp && STREAMER_URL_F) {
         _setFoto(
-          `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(first.timestamp)}&token=${TOKEN_STREAMER_F}`,
+          `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(_tsAdd(first.timestamp, -3))}&token=${TOKEN_STREAMER_F}`,
           `${first.time} · ${first.product}`, false
         );
       }
@@ -1623,8 +1669,12 @@ function renderVarBody() {
             lista.innerHTML = `<div style="padding:12px;color:var(--muted)">Sem itens encontrados.</div>`;
             return;
           }
-          data.itens.forEach((it, i) => {
-            const snapUrl = `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(it.timestamp)}&token=${TOKEN_STREAMER_F}`;
+          const _itensFiltr = _varFotoItemFiltro
+            ? (data.itens.filter(it => it.desc.toLowerCase().includes(_varFotoItemFiltro)) || [])
+            : [];
+          const itensVer = _itensFiltr.length ? _itensFiltr : data.itens;
+          itensVer.forEach((it, i) => {
+            const snapUrl = `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(_tsAdd(it.timestamp, -3))}&token=${TOKEN_STREAMER_F}`;
             const row = _buildRow(
               it.time, it.desc,
               fmtBRL(it.value),
@@ -1633,10 +1683,10 @@ function renderVarBody() {
             );
             lista.appendChild(row);
           });
-          if (data.itens[0]) {
-            const f = data.itens[0];
+          if (itensVer[0]) {
+            const f = itensVer[0];
             _setFoto(
-              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(f.timestamp)}&token=${TOKEN_STREAMER_F}`,
+              `${STREAMER_URL_F}/snapshot?ts=${encodeURIComponent(_tsAdd(f.timestamp, -3))}&token=${TOKEN_STREAMER_F}`,
               `${f.time} · ${f.desc}`, false
             );
           }
@@ -2030,9 +2080,23 @@ document.querySelectorAll(".var-tab").forEach(tab => {
 document.getElementById("formVarCupom").addEventListener("submit", async (e) => {
   e.preventDefault();
   const cupom = document.getElementById("varCupomInput").value.trim();
-  if (!cupom || !varPdvSelecionado) return;
   const tipo = document.querySelector('input[name="varTipo"]:checked').value;
   const itemFiltro = tipo === "item" ? document.getElementById("varItemInput").value.trim().toLowerCase() : "";
+
+  // "Item específico" sem cupom: filtrar a lista de cupons pelo item (item_top)
+  if (tipo === "item" && !cupom) {
+    if (itemFiltro) {
+      const filtrados = _cuponsVarTodos.filter(c =>
+        (c.item_top||"").toLowerCase().includes(itemFiltro)
+      );
+      _renderCuponsVarTabela(filtrados, itemFiltro);
+    } else {
+      _renderCuponsVarTabela(_cuponsVarTodos);
+    }
+    return;
+  }
+
+  if (!cupom || !varPdvSelecionado) return;
 
   const btn = e.target.querySelector("button[type=submit]");
   btn.disabled = true;
@@ -3149,6 +3213,20 @@ async function carregarAuditIa() {
   }
 }
 
+function _toast(msg, tipo = "success") {
+  let el = document.getElementById("_toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "_toast";
+    document.body.appendChild(el);
+  }
+  el.className = tipo;
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 3500);
+}
+
 async function _deletarEvento(id) {
   const resp = await apiFetch(`/api/v1/events/${id}`, { method: "DELETE" });
   return resp.ok;
@@ -3176,8 +3254,13 @@ async function _excluirSelecionados(sel, btnId, reload) {
   }
   if (btn) { btn.disabled = false; btn.style.opacity = ""; }
   sel.clear();
+  const sucesso = ids.length - erros;
+  if (erros > 0) {
+    _toast(`Erro ao excluir ${erros} item(s)`, "error");
+  } else {
+    _toast(`${sucesso} registro${sucesso !== 1 ? "s" : ""} excluído${sucesso !== 1 ? "s" : ""}`);
+  }
   reload();
-  if (erros > 0 && btn) btn.title = `Erro ao excluir ${erros} item(s)`;
 }
 
 function _sincronizarSelAll(checkboxId, sel, rows) {
@@ -3739,6 +3822,7 @@ async function iniciarViewConfigAuditoria() {
   _cfgSet("cfgAudModoAuto", (cfg.auditoria_modo || "auto") === "auto");
   _cfgSet("cfgAudValorMin", cfg.auditoria_valor_minimo ?? "");
   _cfgSet("cfgAudMaxHora", cfg.auditoria_max_por_hora ?? "");
+  _cfgSet("cfgAudFotosPorCupom", cfg.auditoria_fotos_por_cupom ?? "");
   _cfgSet("cfgAudProvedor", cfg.auditoria_provedor || "gemini");
   _cfgSet("cfgAudApiKey", cfg.auditoria_api_key || "");
   _cfgSet("cfgAudModelo", cfg.auditoria_modelo || "gemini-2.5-flash");
@@ -3763,6 +3847,8 @@ async function salvarConfigAuditoria() {
   if (!isNaN(valMin)) dados.auditoria_valor_minimo = valMin;
   const maxH = parseInt(document.getElementById("cfgAudMaxHora").value);
   if (!isNaN(maxH)) dados.auditoria_max_por_hora = maxH;
+  const fotos = parseInt(document.getElementById("cfgAudFotosPorCupom").value);
+  if (!isNaN(fotos)) dados.auditoria_fotos_por_cupom = fotos;
   Object.keys(dados).forEach(k => dados[k] === undefined && delete dados[k]);
   const r = await apiFetch(`/api/v1/config/${_cfgPdv}?loja=${LOJA}`, { method: "PUT", body: JSON.stringify(dados) });
   r.ok ? showToast("Configurações de auditoria salvas.") : showToast("Erro ao salvar.", "error");

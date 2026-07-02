@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=41">
   <script>if ('scrollRestoration' in history) history.scrollRestoration = 'manual';</script>
   <style>
     .video-simulation #eventVideo {
@@ -496,7 +496,7 @@
           <div class="var-search-box">
             <form id="formVarCupom">
               <label class="var-search-label">Número do cupom
-                <input id="varCupomInput" type="text" placeholder="Ex: 221548" required>
+                <input id="varCupomInput" type="text" placeholder="Ex: 221548 (opcional em Item específico)">
               </label>
               <div class="var-radio-group">
                 <label class="var-radio"><input type="radio" name="varTipo" value="all" checked><span>Compra inteira</span></label>
@@ -929,8 +929,12 @@
                 <input id="cfgAudValorMin" type="number" min="0" step="0.01" placeholder="20.00">
               </div>
               <div class="config-field" style="flex:1;min-width:140px">
-                <label>Máx análises por hora</label>
+                <label>Máx análises de cupons por hora</label>
                 <input id="cfgAudMaxHora" type="number" min="1" max="10000" placeholder="60">
+              </div>
+              <div class="config-field" style="flex:1;min-width:140px">
+                <label>Fotos por cupom</label>
+                <input id="cfgAudFotosPorCupom" type="number" min="1" max="50" placeholder="3">
               </div>
             </div>
           </div>
@@ -1305,6 +1309,6 @@
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=37"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>
